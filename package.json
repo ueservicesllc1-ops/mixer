@@ -63,6 +63,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.6.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "postcss": "^8",
