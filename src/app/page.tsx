@@ -14,6 +14,7 @@ import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 import { blobToDataURI } from '@/lib/utils';
+import { getB2FileAsDataURI } from '@/actions/download';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -223,42 +224,33 @@ const DawPage = () => {
         setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
 
         const loadPromises = tracksToLoad.map(async (track) => {
-            let buffer: ArrayBuffer | undefined;
+            let dataUri: string | undefined;
+
             try {
                 // 1. Intentar desde el handle local si existe (modo escritorio)
                 if (track.handle) {
                     try {
                         const file = await track.handle.getFile();
-                        buffer = await file.arrayBuffer();
+                        dataUri = await blobToDataURI(file);
                         console.log(`SUCCESS: Loaded track "${track.name}" from local file handle.`);
                     } catch (e) {
                         console.warn(`Local file handle for ${track.name} failed. Will fallback to B2.`, e);
                     }
                 }
-
-                // 2. Si no hay buffer, intentar desde el caché de audio
-                if (!buffer) {
-                    const cachedBuffer = await getCachedArrayBuffer(track.url);
-                    if (cachedBuffer) {
-                        buffer = cachedBuffer;
-                        console.log(`SUCCESS: Loaded track "${track.name}" from IndexedDB cache.`);
+                
+                // 2. Si no hay Data URI, obtener de B2 usando la Server Action
+                if (!dataUri) {
+                    console.log(`Cache MISS for: ${track.name}. Fetching from B2 via Server Action.`);
+                    const result = await getB2FileAsDataURI(track.fileKey);
+                    if (result.success && result.dataUri) {
+                        dataUri = result.dataUri;
+                        console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
+                    } else {
+                        throw new Error(result.error || `Failed to fetch ${track.url} via server action`);
                     }
                 }
                 
-                // 3. Si sigue sin haber buffer, descargar desde B2
-                if (!buffer) {
-                    console.log(`Cache MISS for: ${track.name}. Fetching from B2.`);
-                    const proxyUrl = `/api/download?url=${encodeURIComponent(track.url)}`;
-                    const response = await fetch(proxyUrl);
-                    if (!response.ok) throw new Error(`Failed to fetch ${track.url}: ${response.statusText}`);
-                    buffer = await response.arrayBuffer();
-                    console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
-                    await cacheArrayBuffer(track.url, buffer.slice(0));
-                }
-
-                const audioBuffer = await Tone.context.decodeAudioData(buffer.slice(0));
-                
-                const player = new Tone.Player(audioBuffer);
+                const player = new Tone.Player(dataUri);
                 player.loop = true;
                 const volume = new Tone.Volume(0);
                 const pitchShift = new Tone.PitchShift({ pitch: pitch });
