@@ -1,4 +1,4 @@
-// electron/main.ts
+// electron.js
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
@@ -10,13 +10,13 @@ function createWindow() {
     height: 800,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // Be careful with this in production
+      contextIsolation: false,
     },
   });
 
   const loadURL = isDev
-    ? 'http://localhost:3000' // URL del servidor de desarrollo de Next.js
-    : `file://${path.join(__dirname, '../out/index.html')}`; // URL para producción
+    ? 'http://localhost:3000' // URL for development server
+    : `file://${path.join(__dirname, '../out/index.html')}`; // URL for production build
 
   win.loadURL(loadURL);
 

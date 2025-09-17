@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "desktop:dev": "concurrently \"npm:dev\" \"wait-on http://localhost:3000 && electron .\""
   },
-  "main": "electron/main.ts",
+  "main": "electron.js",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.614.0",
     "@genkit-ai/googleai": "^1.14.1",
@@ -67,6 +67,7 @@
     "concurrently": "^8.2.2",
     "electron": "^31.2.1",
     "electron-builder": "^25.0.0",
+    "electron-is-dev": "^3.0.1",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
