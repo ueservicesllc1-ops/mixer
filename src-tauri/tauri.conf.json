@@ -1,6 +1,11 @@
 {
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": {
+      "command": "npm run dev",
+      "env": {
+        "BROWSER": "none"
+      }
+    },
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:3000",
     "distDir": "../out",
