@@ -7,8 +7,7 @@
     "build": "next build && next export",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.614.0",
@@ -61,7 +60,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.6.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "postcss": "^8",
