@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "desktop:dev": "concurrently \"npm:dev\" \"wait-on http://localhost:3000 && electron .\""
+    "electron": "wait-on http://localhost:3000 && electron ."
   },
   "main": "electron.js",
   "dependencies": {
