@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run tauri:dev",
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:9002",
     "distDir": "../out",
