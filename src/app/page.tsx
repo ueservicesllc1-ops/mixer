@@ -83,7 +83,7 @@ const DawPage = () => {
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.removeEventListener('online', handleOffline);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -233,11 +233,8 @@ const DawPage = () => {
         const Tone = toneRef.current;
         if (!Tone || !eqNodesRef.current.length || !activeSong) return;
 
-        // Tracks for the current song present in the setlist
         const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
-        
-        // Filter out tracks that are already loaded in trackNodesRef using the unique setlist track ID
-        const tracksToLoad = tracksForCurrentSong.filter(track => !trackNodesRef.current[track.id]);
+        const tracksToLoad = tracksForCurrentSong.filter(setlistTrack => !trackNodesRef.current[setlistTrack.id]);
         
         if (tracksToLoad.length === 0) {
             setLoadingTracks(new Set());
@@ -249,13 +246,13 @@ const DawPage = () => {
         setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
         
         const loadPromises = tracksToLoad.map(async (setlistTrack) => {
-            let dataUri: string | undefined;
-
-            // Find the full track definition from the global 'songs' array
-            const songTrack = activeSong.tracks.find(t => t.fileKey === setlistTrack.fileKey);
-
             try {
-                // 1. Attempt to load from local file handle (if in desktop mode)
+                let dataUri: string | undefined;
+
+                // Find the full track definition from the global 'songs' array
+                const songTrack = activeSong.tracks.find(t => t.fileKey === setlistTrack.fileKey);
+
+                // 1. Attempt to load from local file handle
                 if (songTrack?.handle) {
                     try {
                         const file = await songTrack.handle.getFile();
@@ -268,24 +265,21 @@ const DawPage = () => {
                 
                 // 2. If no dataUri yet, fetch from B2 using Server Action (if online)
                 if (!dataUri) {
-                  if (!isOnline) {
-                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
-                    console.error(`OFFLINE: ${errorMessage}`);
-                    toast({ variant: "destructive", title: "Modo Offline", description: errorMessage });
-                    return; // Stop if offline and not available locally
-                  }
-                  
-                  console.log(`Cache MISS for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
-                  const result = await getB2FileAsDataURI(setlistTrack.fileKey);
-                  if (result.success && result.dataUri) {
-                      dataUri = result.dataUri;
-                      console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
+                  if (isOnline) {
+                      console.log(`Cache MISS for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
+                      const result = await getB2FileAsDataURI(setlistTrack.fileKey);
+                      if (result.success && result.dataUri) {
+                          dataUri = result.dataUri;
+                          console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
+                      } else {
+                          throw new Error(result.error || `Failed to fetch ${setlistTrack.name} via server action`);
+                      }
                   } else {
-                      throw new Error(result.error || `Failed to fetch ${setlistTrack.name} via server action`);
+                     const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
+                     throw new Error(errorMessage);
                   }
                 }
                 
-                // 3. Create audio player if we have a data URI
                 if (dataUri) {
                     const player = new Tone.Player(dataUri);
                     player.loop = true;
@@ -302,7 +296,6 @@ const DawPage = () => {
                       pitchShift.toDestination();
                     }
                     
-                    // Use the unique setlistTrack.id as the key
                     trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
                 }
                 
