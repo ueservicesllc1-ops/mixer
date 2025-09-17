@@ -83,7 +83,7 @@ const DawPage = () => {
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
-    window.removeEventListener('online', handleOffline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -233,7 +233,9 @@ const DawPage = () => {
         const Tone = toneRef.current;
         if (!Tone || !eqNodesRef.current.length || !activeSong) return;
 
+        // Tracks for the current song from the setlist
         const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
+        // Filter out tracks that are already loaded
         const tracksToLoad = tracksForCurrentSong.filter(setlistTrack => !trackNodesRef.current[setlistTrack.id]);
         
         if (tracksToLoad.length === 0) {
@@ -248,57 +250,58 @@ const DawPage = () => {
         const loadPromises = tracksToLoad.map(async (setlistTrack) => {
             try {
                 let dataUri: string | undefined;
+                
+                // Find the full track definition from the global 'songs' state, which contains the handle
+                const songDefinition = songs.find(s => s.id === setlistTrack.songId);
+                const trackDefinition = songDefinition?.tracks.find(t => t.fileKey === setlistTrack.fileKey);
 
-                // Find the full track definition from the global 'songs' array
-                const songTrack = activeSong.tracks.find(t => t.fileKey === setlistTrack.fileKey);
-
-                // 1. Attempt to load from local file handle
-                if (songTrack?.handle) {
+                // 1. Attempt to load from local file handle (if available)
+                if (trackDefinition?.handle) {
                     try {
-                        const file = await songTrack.handle.getFile();
+                        const file = await trackDefinition.handle.getFile();
                         dataUri = await blobToDataURI(file);
                         console.log(`SUCCESS: Loaded track "${setlistTrack.name}" from local file handle.`);
                     } catch (e) {
-                        console.warn(`Local file handle for ${setlistTrack.name} failed. Will fallback.`, e);
+                        console.warn(`Local file handle for ${setlistTrack.name} failed. Will fallback to server download.`, e);
                     }
                 }
                 
-                // 2. If no dataUri yet, fetch from B2 using Server Action (if online)
-                if (!dataUri) {
-                  if (isOnline) {
-                      console.log(`Cache MISS for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
-                      const result = await getB2FileAsDataURI(setlistTrack.fileKey);
-                      if (result.success && result.dataUri) {
-                          dataUri = result.dataUri;
-                          console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
-                      } else {
-                          throw new Error(result.error || `Failed to fetch ${setlistTrack.name} via server action`);
-                      }
-                  } else {
-                     const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
-                     throw new Error(errorMessage);
-                  }
-                }
-                
-                if (dataUri) {
-                    const player = new Tone.Player(dataUri);
-                    player.loop = true;
-                    const volume = new Tone.Volume(0);
-                    const pitchShift = new Tone.PitchShift({ pitch: pitch });
-                    const panner = new Tone.Panner(0);
-                    const waveform = new Tone.Waveform(256);
-                    
-                    player.chain(volume, panner, pitchShift, waveform);
-                    
-                    if (eqNodesRef.current.length > 0) {
-                      pitchShift.connect(eqNodesRef.current[0]);
+                // 2. If no dataUri yet, and we are online, fetch from B2 using Server Action
+                if (!dataUri && isOnline) {
+                    console.log(`Local file handle not found or failed for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
+                    const result = await getB2FileAsDataURI(setlistTrack.fileKey);
+                    if (result.success && result.dataUri) {
+                        dataUri = result.dataUri;
+                        console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
                     } else {
-                      pitchShift.toDestination();
+                        // This error will be caught by the outer catch block
+                        throw new Error(result.error || `Failed to fetch '${setlistTrack.name}' from server.`);
                     }
-                    
-                    trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
                 }
                 
+                // 3. If still no dataUri, it means we are offline and don't have the file locally.
+                if (!dataUri) {
+                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
+                    throw new Error(errorMessage);
+                }
+                
+                // 4. If we have a dataUri, create the Tone.js player
+                const player = new Tone.Player(dataUri);
+                player.loop = true;
+                const volume = new Tone.Volume(0);
+                const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                const panner = new Tone.Panner(0);
+                const waveform = new Tone.Waveform(256);
+                
+                player.chain(volume, panner, pitchShift, waveform);
+                
+                if (eqNodesRef.current.length > 0) {
+                    pitchShift.connect(eqNodesRef.current[0]);
+                } else {
+                    pitchShift.toDestination();
+                }
+                
+                trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
                 setLoadedTracksCount(prev => prev + 1);
 
             } catch (error) {
@@ -308,17 +311,24 @@ const DawPage = () => {
                   title: `Error al cargar pista`,
                   description: `${setlistTrack.name}: ${(error as Error).message}`,
                 });
+                // Also update loading state on error to avoid getting stuck
+                setLoadingTracks(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(setlistTrack.id);
+                    return newSet;
+                });
             }
         });
     
         await Promise.all(loadPromises);
+        // After all promises, clear the loading set completely
         setLoadingTracks(new Set());
     };
 
     loadAudioData();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId, activeSong, isOnline, tracks]);
+  }, [activeSongId, activeSong, isOnline, tracks, songs]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -560,7 +570,10 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
-  const totalTracksForCurrentSong = activeSong?.tracks?.length || 0;
+  const totalTracksForCurrentSong = useMemo(() => {
+    return tracks.filter(t => t.songId === activeSongId).length;
+  }, [tracks, activeSongId]);
+
   const loadingProgress = totalTracksForCurrentSong > 0 ? (loadedTracksCount / totalTracksForCurrentSong) * 100 : 100;
   const showLoadingBar = loadingTracks.size > 0 || (activeSongId && totalTracksForCurrentSong > 0 && loadedTracksCount < totalTracksForCurrentSong);
 
