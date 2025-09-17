@@ -220,7 +220,7 @@ const DawPage = () => {
   }, []);
 
 
-  useEffect(() => {
+   useEffect(() => {
     if (!activeSongId) {
         stopAllTracks();
         setLoadingTracks(new Set());
@@ -233,58 +233,59 @@ const DawPage = () => {
         const Tone = toneRef.current;
         if (!Tone || !eqNodesRef.current.length || !activeSong) return;
 
-        const tracksForCurrentSong = activeSong.tracks;
-        const tracksToLoad = tracksForCurrentSong.filter(track => !trackNodesRef.current[track.fileKey]);
-
+        // Tracks for the current song present in the setlist
+        const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
+        
+        // Filter out tracks that are already loaded in trackNodesRef using the unique setlist track ID
+        const tracksToLoad = tracksForCurrentSong.filter(track => !trackNodesRef.current[track.id]);
+        
         if (tracksToLoad.length === 0) {
             setLoadingTracks(new Set());
             setLoadedTracksCount(tracksForCurrentSong.length);
             return;
         }
 
-        setLoadingTracks(new Set(tracksToLoad.map(t => t.fileKey)));
+        setLoadingTracks(new Set(tracksToLoad.map(t => t.id)));
         setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
-
-        const loadPromises = tracksToLoad.map(async (track) => {
+        
+        const loadPromises = tracksToLoad.map(async (setlistTrack) => {
             let dataUri: string | undefined;
 
+            // Find the full track definition from the global 'songs' array
+            const songTrack = activeSong.tracks.find(t => t.fileKey === setlistTrack.fileKey);
+
             try {
-                // 1. Intentar desde el handle local si existe (modo escritorio)
-                if (track.handle) {
+                // 1. Attempt to load from local file handle (if in desktop mode)
+                if (songTrack?.handle) {
                     try {
-                        const file = await track.handle.getFile();
+                        const file = await songTrack.handle.getFile();
                         dataUri = await blobToDataURI(file);
-                        console.log(`SUCCESS: Loaded track "${track.name}" from local file handle.`);
+                        console.log(`SUCCESS: Loaded track "${setlistTrack.name}" from local file handle.`);
                     } catch (e) {
-                        console.warn(`Local file handle for ${track.name} failed. Will fallback.`, e);
+                        console.warn(`Local file handle for ${setlistTrack.name} failed. Will fallback.`, e);
                     }
                 }
                 
-                // 2. Si no hay Data URI, obtener de B2 usando la Server Action (si hay conexión)
+                // 2. If no dataUri yet, fetch from B2 using Server Action (if online)
                 if (!dataUri) {
                   if (!isOnline) {
-                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${track.name}".`;
+                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
                     console.error(`OFFLINE: ${errorMessage}`);
-                    toast({
-                      variant: "destructive",
-                      title: "Modo Offline",
-                      description: errorMessage,
-                    });
-                    // No continuar si estamos offline y el archivo no está disponible localmente
-                    return; 
+                    toast({ variant: "destructive", title: "Modo Offline", description: errorMessage });
+                    return; // Stop if offline and not available locally
                   }
                   
-                  console.log(`Cache MISS for: ${track.name}. Fetching from B2 via Server Action.`);
-                  const result = await getB2FileAsDataURI(track.fileKey);
+                  console.log(`Cache MISS for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
+                  const result = await getB2FileAsDataURI(setlistTrack.fileKey);
                   if (result.success && result.dataUri) {
                       dataUri = result.dataUri;
-                      console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
+                      console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
                   } else {
-                      throw new Error(result.error || `Failed to fetch ${track.name} via server action`);
+                      throw new Error(result.error || `Failed to fetch ${setlistTrack.name} via server action`);
                   }
                 }
                 
-                // 3. Crear el reproductor de audio si tenemos el Data URI
+                // 3. Create audio player if we have a data URI
                 if (dataUri) {
                     const player = new Tone.Player(dataUri);
                     player.loop = true;
@@ -296,25 +297,23 @@ const DawPage = () => {
                     player.chain(volume, panner, pitchShift, waveform);
                     
                     if (eqNodesRef.current.length > 0) {
-                    pitchShift.connect(eqNodesRef.current[0]);
+                      pitchShift.connect(eqNodesRef.current[0]);
                     } else {
-                    pitchShift.toDestination();
+                      pitchShift.toDestination();
                     }
                     
-                    const trackIdInSetlist = tracks.find(t => t.songId === activeSongId && t.fileKey === track.fileKey)?.id;
-                    if (trackIdInSetlist) {
-                        trackNodesRef.current[trackIdInSetlist] = { player, panner, pitchShift, volume, waveform };
-                    }
+                    // Use the unique setlistTrack.id as the key
+                    trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
                 }
                 
                 setLoadedTracksCount(prev => prev + 1);
 
             } catch (error) {
-                console.error(`Error loading track ${track.name}:`, error);
+                console.error(`Error loading track ${setlistTrack.name}:`, error);
                 toast({
                   variant: "destructive",
                   title: `Error al cargar pista`,
-                  description: `${track.name}: ${(error as Error).message}`,
+                  description: `${setlistTrack.name}: ${(error as Error).message}`,
                 });
             }
         });
@@ -326,7 +325,7 @@ const DawPage = () => {
     loadAudioData();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId, activeSong, isOnline]);
+  }, [activeSongId, activeSong, isOnline, tracks]);
 
   useEffect(() => {
     if (activeSongId) {
