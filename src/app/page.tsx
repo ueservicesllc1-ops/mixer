@@ -225,12 +225,12 @@ const DawPage = () => {
         const loadPromises = tracksToLoad.map(async (track) => {
             let buffer: ArrayBuffer | undefined;
             try {
-                // 1. Intentar desde el handle local si existe
+                // 1. Intentar desde el handle local si existe (modo escritorio)
                 if (track.handle) {
                     try {
                         const file = await track.handle.getFile();
                         buffer = await file.arrayBuffer();
-                        console.log(`Local file handle SUCCESS for: ${track.name}`);
+                        console.log(`SUCCESS: Loaded track "${track.name}" from local file handle.`);
                     } catch (e) {
                         console.warn(`Local file handle for ${track.name} failed. Will fallback to B2.`, e);
                     }
@@ -239,7 +239,10 @@ const DawPage = () => {
                 // 2. Si no hay buffer, intentar desde el caché de audio
                 if (!buffer) {
                     const cachedBuffer = await getCachedArrayBuffer(track.url);
-                    if (cachedBuffer) buffer = cachedBuffer;
+                    if (cachedBuffer) {
+                        buffer = cachedBuffer;
+                        console.log(`SUCCESS: Loaded track "${track.name}" from IndexedDB cache.`);
+                    }
                 }
                 
                 // 3. Si sigue sin haber buffer, descargar desde B2
@@ -249,6 +252,7 @@ const DawPage = () => {
                     const response = await fetch(proxyUrl);
                     if (!response.ok) throw new Error(`Failed to fetch ${track.url}: ${response.statusText}`);
                     buffer = await response.arrayBuffer();
+                    console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
                     await cacheArrayBuffer(track.url, buffer.slice(0));
                 }
 

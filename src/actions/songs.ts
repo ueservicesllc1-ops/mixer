@@ -106,6 +106,8 @@ export async function updateSong(songId: string, data: SongUpdateData) {
         throw new Error('Could not find song after update.');
     }
     const updatedSongData = updatedDoc.data();
+    
+    // Aquí no tenemos acceso a los handles, pero el cliente los mantendrá en su estado.
     const updatedSong: Song = {
         id: updatedDoc.id,
         ...updatedSongData,
@@ -125,8 +127,24 @@ async function runStructureAnalysisOnUpload(songId: string, tracks: TrackFile[])
         const cuesTrack = tracks.find(t => t.name.trim().toUpperCase() === 'CUES');
         if (cuesTrack) {
             console.log(`Iniciando análisis de estructura para la canción ${songId}...`);
-            // El análisis se hace con la URL pública, ya que el audio puede no estar en caché aún
-            const structure = await analyzeSongStructure({ audioDataUri: cuesTrack.url });
+            
+            let audioDataUri = cuesTrack.url;
+            // Si tenemos el handle, lo usamos para leer el archivo localmente y evitar la descarga
+            if (cuesTrack.handle) {
+                 try {
+                    const file = await cuesTrack.handle.getFile();
+                    const reader = new FileReader();
+                    audioDataUri = await new Promise((resolve, reject) => {
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+                } catch (e) {
+                    console.warn("No se pudo leer el handle para el análisis, se usará la URL de descarga.", e);
+                }
+            }
+            
+            const structure = await analyzeSongStructure({ audioDataUri });
             
             const songRef = doc(db, 'songs', songId);
             await updateDoc(songRef, { structure });
@@ -172,6 +190,8 @@ export async function getSongs() {
             const data = doc.data();
             const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
 
+            // Los handles no se guardan en la DB, así que aquí no estarán.
+            // Se deben mantener en el estado del cliente.
             return {
                 id: doc.id,
                 name: toTitleCase(data.name),
