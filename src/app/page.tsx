@@ -15,6 +15,7 @@ import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 import { blobToDataURI } from '@/lib/utils';
 import { getB2FileAsDataURI } from '@/actions/download';
+import { useToast } from '@/components/ui/use-toast';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -70,6 +71,7 @@ const DawPage = () => {
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
 
   const [isOnline, setIsOnline] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     // Establecer el estado inicial
@@ -254,50 +256,66 @@ const DawPage = () => {
                         dataUri = await blobToDataURI(file);
                         console.log(`SUCCESS: Loaded track "${track.name}" from local file handle.`);
                     } catch (e) {
-                        console.warn(`Local file handle for ${track.name} failed. Will fallback to B2.`, e);
+                        console.warn(`Local file handle for ${track.name} failed. Will fallback.`, e);
                     }
                 }
                 
-                // 2. Si no hay Data URI, obtener de B2 usando la Server Action
+                // 2. Si no hay Data URI, obtener de B2 usando la Server Action (si hay conexión)
                 if (!dataUri) {
                   if (!isOnline) {
-                    console.error(`OFFLINE: Cannot download track "${track.name}". No internet connection.`);
-                    throw new Error(`Estás desconectado. No se puede descargar la pista ${track.name}.`);
+                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${track.name}".`;
+                    console.error(`OFFLINE: ${errorMessage}`);
+                    toast({
+                      variant: "destructive",
+                      title: "Modo Offline",
+                      description: errorMessage,
+                    });
+                    // No continuar si estamos offline y el archivo no está disponible localmente
+                    return; 
                   }
-                    console.log(`Cache MISS for: ${track.name}. Fetching from B2 via Server Action.`);
-                    const result = await getB2FileAsDataURI(track.fileKey);
-                    if (result.success && result.dataUri) {
-                        dataUri = result.dataUri;
-                        console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
+                  
+                  console.log(`Cache MISS for: ${track.name}. Fetching from B2 via Server Action.`);
+                  const result = await getB2FileAsDataURI(track.fileKey);
+                  if (result.success && result.dataUri) {
+                      dataUri = result.dataUri;
+                      console.log(`SUCCESS: Downloaded track "${track.name}" from B2.`);
+                  } else {
+                      throw new Error(result.error || `Failed to fetch ${track.name} via server action`);
+                  }
+                }
+                
+                // 3. Crear el reproductor de audio si tenemos el Data URI
+                if (dataUri) {
+                    const player = new Tone.Player(dataUri);
+                    player.loop = true;
+                    const volume = new Tone.Volume(0);
+                    const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                    const panner = new Tone.Panner(0);
+                    const waveform = new Tone.Waveform(256);
+                    
+                    player.chain(volume, panner, pitchShift, waveform);
+                    
+                    if (eqNodesRef.current.length > 0) {
+                    pitchShift.connect(eqNodesRef.current[0]);
                     } else {
-                        throw new Error(result.error || `Failed to fetch ${track.url} via server action`);
+                    pitchShift.toDestination();
                     }
-                }
-                
-                const player = new Tone.Player(dataUri);
-                player.loop = true;
-                const volume = new Tone.Volume(0);
-                const pitchShift = new Tone.PitchShift({ pitch: pitch });
-                const panner = new Tone.Panner(0);
-                const waveform = new Tone.Waveform(256);
-                
-                player.chain(volume, panner, pitchShift, waveform);
-                
-                if (eqNodesRef.current.length > 0) {
-                  pitchShift.connect(eqNodesRef.current[0]);
-                } else {
-                  pitchShift.toDestination();
-                }
-                
-                const trackIdInSetlist = tracks.find(t => t.songId === activeSongId && t.fileKey === track.fileKey)?.id;
-                if (trackIdInSetlist) {
-                    trackNodesRef.current[trackIdInSetlist] = { player, panner, pitchShift, volume, waveform };
+                    
+                    const trackIdInSetlist = tracks.find(t => t.songId === activeSongId && t.fileKey === track.fileKey)?.id;
+                    if (trackIdInSetlist) {
+                        trackNodesRef.current[trackIdInSetlist] = { player, panner, pitchShift, volume, waveform };
+                    }
                 }
                 
                 setLoadedTracksCount(prev => prev + 1);
 
             } catch (error) {
                 console.error(`Error loading track ${track.name}:`, error);
+                toast({
+                  variant: "destructive",
+                  title: `Error al cargar pista`,
+                  description: `${track.name}: ${(error as Error).message}`,
+                });
             }
         });
     
@@ -308,7 +326,7 @@ const DawPage = () => {
     loadAudioData();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId, tracks, activeSong, isOnline]);
+  }, [activeSongId, activeSong, isOnline]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -430,7 +448,9 @@ const DawPage = () => {
       const Tone = toneRef.current;
       if (!Tone || !activeSong) return;
       Object.values(trackNodesRef.current).forEach(({ player }) => {
-        player.playbackRate = playbackRate;
+        if (player) {
+          player.playbackRate = playbackRate;
+        }
       });
       Tone.Transport.bpm.value = activeSong.tempo * playbackRate;
       
@@ -548,7 +568,7 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
-  const totalTracksForCurrentSong = tracks.filter(t => t.songId === activeSongId).length;
+  const totalTracksForCurrentSong = activeSong?.tracks?.length || 0;
   const loadingProgress = totalTracksForCurrentSong > 0 ? (loadedTracksCount / totalTracksForCurrentSong) * 100 : 100;
   const showLoadingBar = loadingTracks.size > 0 || (activeSongId && totalTracksForCurrentSong > 0 && loadedTracksCount < totalTracksForCurrentSong);
 

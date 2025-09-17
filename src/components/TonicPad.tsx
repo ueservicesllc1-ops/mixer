@@ -83,6 +83,7 @@ const TonicPad: React.FC<TonicPadProps> = ({ isOnline }) => {
         if (!sample.url || !sample.padKey || !sample.fileKey) return;
         try {
             samplesRef.current[sample.padKey] = sample;
+            // Usa la acción de servidor segura para obtener el audio
             const downloadResult = await getB2FileAsDataURI(sample.fileKey);
 
             if (!downloadResult.success || !downloadResult.dataUri) {
@@ -241,3 +242,5 @@ const TonicPad: React.FC<TonicPadProps> = ({ isOnline }) => {
 };
 
 export default TonicPad;
+
+    
