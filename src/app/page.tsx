@@ -68,6 +68,26 @@ const DawPage = () => {
   
   const [isYouTubePlayerOpen, setIsYouTubePlayerOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
+
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    // Establecer el estado inicial
+    if (typeof window !== 'undefined' && typeof window.navigator !== 'undefined') {
+      setIsOnline(window.navigator.onLine);
+    }
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   
   const initAudio = useCallback(async () => {
     if (!toneRef.current) {
@@ -240,6 +260,10 @@ const DawPage = () => {
                 
                 // 2. Si no hay Data URI, obtener de B2 usando la Server Action
                 if (!dataUri) {
+                  if (!isOnline) {
+                    console.error(`OFFLINE: Cannot download track "${track.name}". No internet connection.`);
+                    throw new Error(`Estás desconectado. No se puede descargar la pista ${track.name}.`);
+                  }
                     console.log(`Cache MISS for: ${track.name}. Fetching from B2 via Server Action.`);
                     const result = await getB2FileAsDataURI(track.fileKey);
                     if (result.success && result.dataUri) {
@@ -284,7 +308,7 @@ const DawPage = () => {
     loadAudioData();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId, tracks, activeSong]);
+  }, [activeSongId, tracks, activeSong, isOnline]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -556,6 +580,7 @@ const DawPage = () => {
             masterVolume={masterVolume}
             onMasterVolumeChange={handleMasterVolumeChange}
             masterVuLevel={masterVuLevel}
+            isOnline={isOnline}
         />
       </div>
       
@@ -569,6 +594,7 @@ const DawPage = () => {
               eqBands={eqBands}
               onEqChange={handleEqChange}
               onReset={handleEqReset}
+              isOnline={isOnline}
             />
         </div>
         {activeSongId ? (
@@ -600,8 +626,9 @@ const DawPage = () => {
             onSetlistSelected={handleSetlistSelected}
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
+            isOnline={isOnline}
         />
-        <TonicPad />
+        <TonicPad isOnline={isOnline} />
       </div>
 
       <YouTubePlayerDialog

@@ -16,7 +16,11 @@ type ToneModule = typeof import('tone');
 type PlayersRef = Record<string, import('tone').Player | null>;
 type SamplesRef = Record<string, Sample>;
 
-const TonicPad = () => {
+interface TonicPadProps {
+    isOnline: boolean;
+}
+
+const TonicPad: React.FC<TonicPadProps> = ({ isOnline }) => {
   const [volume, setVolume] = useState(75);
   const [isMuted, setIsMuted] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -52,6 +56,16 @@ const TonicPad = () => {
     audioPlayersRef.current = {};
     samplesRef.current = {};
 
+    if (!isOnline) {
+        toast({
+            variant: 'destructive',
+            title: 'Modo Offline',
+            description: 'No se pueden cargar nuevos grupos de samples sin conexión.',
+        });
+        setIsLoading(false);
+        return;
+    }
+
     const { success, samples, error } = await getSamplesByGroup(groupKey);
 
     if (!success) {
@@ -85,7 +99,7 @@ const TonicPad = () => {
 
     await Promise.all(loadPromises);
     setIsLoading(false);
-  }, [initializeAudio, toast]);
+  }, [initializeAudio, toast, isOnline]);
 
   useEffect(() => {
     if (selectedGroup) {
@@ -134,7 +148,11 @@ const TonicPad = () => {
             }
        }
    } else {
-       toast({ title: "Sin sonido", description: `No hay un sample asignado al pad ${padKey}.`, variant: "destructive" });
+       if (isOnline) {
+           toast({ title: "Sin sonido", description: `No hay un sample asignado al pad ${padKey}.`, variant: "destructive" });
+       } else {
+            toast({ title: "Modo Offline", description: `No se pudo cargar el sonido para el pad ${padKey}.`, variant: "destructive" });
+       }
    }
   };
 

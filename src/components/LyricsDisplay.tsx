@@ -17,6 +17,7 @@ interface LyricsDisplayProps {
   eqBands: number[];
   onEqChange: (bandIndex: number, value: number) => void;
   onReset: () => void;
+  isOnline: boolean;
 }
 
 const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ 
@@ -26,7 +27,8 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({
     onOpenTeleprompter,
     eqBands,
     onEqChange,
-    onReset
+    onReset,
+    isOnline
 }) => {
   return (
     <div className="flex gap-4 h-full">
@@ -60,10 +62,10 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({
        <button 
           className={cn(
             "relative rounded-lg overflow-hidden group h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background flex-1",
-            !youtubeUrl && "opacity-50 cursor-not-allowed"
+            (!youtubeUrl || !isOnline) && "opacity-50 cursor-not-allowed"
           )}
           onClick={() => youtubeUrl && onOpenYouTube()}
-          disabled={!youtubeUrl}
+          disabled={!youtubeUrl || !isOnline}
         >
         <Image
           src="https://picsum.photos/seed/youtube-btn/600/400"
@@ -78,6 +80,9 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({
                 YouTube
              </span>
          </div>
+         {!isOnline && (
+            <div className="absolute bottom-2 right-2 bg-destructive text-destructive-foreground text-xs font-bold px-2 py-1 rounded">OFFLINE</div>
+         )}
       </button>
       <button 
         className={cn(

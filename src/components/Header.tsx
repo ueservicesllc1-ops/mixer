@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Rewind, Play, Pause, Square, FastForward, Settings, RadioTower, Disc, Loader2, DownloadCloud, Timer, Plus, Minus, RotateCcw } from 'lucide-react';
+import { Rewind, Play, Pause, Square, FastForward, Settings, RadioTower, Disc, Loader2, DownloadCloud, Timer, Plus, Minus, RotateCcw, Wifi, WifiOff } from 'lucide-react';
 import { Circle } from './icons';
 import { Progress } from './ui/progress';
 import { cn, transposeNote } from '@/lib/utils';
@@ -13,6 +13,12 @@ import SettingsDialog from './SettingsDialog';
 import { Input } from './ui/input';
 import type { Song } from '@/actions/songs';
 import VolumeSlider from './VolumeSlider';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface HeaderProps {
   isPlaying?: boolean;
@@ -41,6 +47,7 @@ interface HeaderProps {
   masterVolume: number;
   onMasterVolumeChange: (volume: number) => void;
   masterVuLevel: number;
+  isOnline: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -69,6 +76,7 @@ const Header: React.FC<HeaderProps> = ({
   masterVolume,
   onMasterVolumeChange,
   masterVuLevel,
+  isOnline,
 }) => {
   
   const currentBPM = activeSong?.tempo ? activeSong.tempo * playbackRate : null;
@@ -202,15 +210,32 @@ const Header: React.FC<HeaderProps> = ({
         </div>
         
         <div className="flex items-center justify-end gap-2 ml-auto">
-            <Button variant="ghost" className="gap-2">
-                <Circle className="w-2 h-2 fill-current" />
-                OUTS
-            </Button>
+             <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={cn(
+                      'flex items-center justify-center w-10 h-10 rounded-full',
+                      isOnline ? 'bg-green-500/20' : 'bg-destructive/20'
+                  )}>
+                      {isOnline ? (
+                          <Wifi className="w-5 h-5 text-green-400" />
+                      ) : (
+                          <WifiOff className="w-5 h-5 text-destructive" />
+                      )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isOnline ? 'Conectado a internet' : 'Modo offline'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <SettingsDialog 
               fadeOutDuration={fadeOutDuration}
               onFadeOutDurationChange={onFadeOutDurationChange}
               isPanVisible={isPanVisible}
               onPanVisibilityChange={onPanVisibilityChange}
+              isOnline={isOnline}
             >
                 <Button variant="ghost" size="icon">
                     <Settings />

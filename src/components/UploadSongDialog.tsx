@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -65,11 +66,12 @@ type SongFormValues = z.infer<typeof songFormSchema>;
 
 interface UploadSongDialogProps {
   onUploadFinished: () => void;
+  isOnline: boolean;
 }
 
 type TrackStatus = 'pending' | 'uploading' | 'success' | 'error';
 
-const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished }) => {
+const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, isOnline }) => {
   const [open, setOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
@@ -230,6 +232,15 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished })
   }
 
   async function onSubmit(data: SongFormValues) {
+    if (!isOnline) {
+        toast({
+            variant: 'destructive',
+            title: 'Modo Offline',
+            description: 'No se pueden subir canciones nuevas sin conexión a internet.',
+        });
+        return;
+    }
+
     setIsUploading(true);
     const uploadedTracks: TrackFile[] = [];
 
@@ -344,7 +355,7 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished })
       }
     }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2" disabled={!isOnline} title={!isOnline ? "Necesitas conexión para subir canciones" : ""}>
             <Upload className="w-4 h-4" />
             Subir Canción
         </Button>

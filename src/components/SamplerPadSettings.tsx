@@ -23,7 +23,11 @@ interface PadState {
     sample: Partial<Sample> | null;
 }
 
-const SamplerPadSettings = () => {
+interface SamplerPadSettingsProps {
+    isOnline: boolean;
+}
+
+const SamplerPadSettings: React.FC<SamplerPadSettingsProps> = ({ isOnline }) => {
     const [selectedGroup, setSelectedGroup] = useState<string>('X');
     const [isLoading, setIsLoading] = useState(false);
     const [pads, setPads] = useState<Record<string, PadState>>({});
@@ -60,7 +64,9 @@ const SamplerPadSettings = () => {
                     return newPads;
                 });
             } else {
-                toast({ variant: 'destructive', title: 'Error', description: result.error });
+                if (isOnline) {
+                    toast({ variant: 'destructive', title: 'Error', description: result.error });
+                }
             }
         } finally {
             setIsLoading(false);
@@ -86,6 +92,10 @@ const SamplerPadSettings = () => {
 
     const handleNameBlur = async (padKey: string) => {
         const padState = pads[padKey];
+        if (!isOnline) {
+            toast({ variant: 'destructive', title: 'Modo Offline', description: 'No se puede guardar el nombre sin conexión.' });
+            return;
+        }
         // Guardar solo si existe un ID (es un sample ya guardado) y tiene un nombre
         if (!padState.sample || !padState.sample.id || !padState.sample.name) return;
 
@@ -110,6 +120,11 @@ const SamplerPadSettings = () => {
     };
     
     const uploadFile = async (padKey: string, file: File) => {
+        if (!isOnline) {
+            toast({ variant: 'destructive', title: 'Modo Offline', description: 'No se pueden subir archivos sin conexión.' });
+            return;
+        }
+
         setPads(prev => ({ ...prev, [padKey]: { ...prev[padKey], status: 'uploading', progress: 0 } }));
         
         try {
@@ -215,7 +230,7 @@ const SamplerPadSettings = () => {
                                                 value={padState.sample?.name || ''}
                                                 onChange={(e) => handleNameChange(padKey, e.target.value)}
                                                 onBlur={() => handleNameBlur(padKey)}
-                                                disabled={isProcessing}
+                                                disabled={isProcessing || !isOnline}
                                             />
                                             <input
                                                 type="file"
@@ -229,7 +244,8 @@ const SamplerPadSettings = () => {
                                                 className="w-full gap-2" 
                                                 variant="outline"
                                                 onClick={() => fileInputRefs.current[padKey]?.click()}
-                                                disabled={isProcessing}
+                                                disabled={isProcessing || !isOnline}
+                                                title={!isOnline ? "Necesitas conexión para subir archivos" : ""}
                                             >
                                                 {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Upload className="w-4 h-4" />}
                                                 {isProcessing ? 'Procesando...' : (padState.sample?.url ? 'Reemplazar' : 'Subir Audio')}
