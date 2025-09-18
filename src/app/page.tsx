@@ -108,8 +108,10 @@ const DawPage = () => {
             });
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
-            const masterChain = [...eqChain, masterVol, masterMeter, Tone.Destination];
-            Tone.connectSeries(...masterChain);
+            
+            // Correct chain: EQ -> Master Volume -> Master Meter -> Destination
+            Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
+
             eqNodesRef.current = eqChain;
             masterVolumeNodeRef.current = masterVol;
             masterMeterRef.current = masterMeter;
@@ -152,6 +154,11 @@ const DawPage = () => {
           return a.name.localeCompare(b.name);
       });
   }, [tracks, activeSongId]);
+
+  const activeTracksRef = useRef(activeTracks);
+  useEffect(() => {
+      activeTracksRef.current = activeTracks;
+  }, [activeTracks]);
 
   useEffect(() => {
     const fetchLastSetlist = async () => {
@@ -307,7 +314,8 @@ const DawPage = () => {
         };
 
         loadAudioData();
-    }, [activeSongId, songs, tracks, isOnline, pitch, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSongId, isOnline, pitch, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -412,11 +420,16 @@ const DawPage = () => {
     if (Tone.context.state === 'suspended') await Tone.context.resume();
     if (Tone.Transport.state !== 'started') {
       Object.values(trackNodesRef.current).forEach(node => node.player?.unsync());
-      activeTracks.forEach(track => trackNodesRef.current[track.id]?.player.sync().start(0));
+      activeTracksRef.current.forEach(track => {
+          const trackNode = trackNodesRef.current[track.id];
+          if (trackNode) {
+              trackNode.player.sync().start(0);
+          }
+      });
       Tone.Transport.start();
       setIsPlaying(true);
     }
-  }, [loadingTracks.size, activeSong, initAudio, activeTracks]);
+  }, [loadingTracks.size, activeSong, initAudio]);
 
   const handlePause = useCallback(() => {
     const Tone = toneRef.current;
