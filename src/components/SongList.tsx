@@ -541,13 +541,17 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
     <div className="bg-card/50 rounded-lg p-3 flex flex-col h-full">
       <div className="flex justify-between items-center mb-3">
-        <h2 className="font-bold text-foreground">{selectedSetlist ? selectedSetlist.name : 'Nuevas betel'}</h2>
+        <div className="flex-grow bg-black/80 border border-amber-400/20 rounded-md h-8 flex items-center justify-center px-2 mr-4">
+            <span className="font-mono text-sm uppercase text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)] truncate">
+                {selectedSetlist ? selectedSetlist.name : 'SELECCIONAR SETLIST'}
+            </span>
+        </div>
         
         <Sheet open={isSetlistSheetOpen} onOpenChange={setIsSetlistSheetOpen}>
             <SheetTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={handleFetchSetlists}>
                     <AlignJustify className="w-4 h-4" />
-                    {selectedSetlist ? 'Setlists' : 'Setlists'}
+                    Setlists
                 </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[600px] sm:w-[700px] bg-card/95">
@@ -631,3 +635,5 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 };
 
 export default SongList;
+
+    
