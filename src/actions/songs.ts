@@ -185,7 +185,7 @@ export async function reanalyzeSongStructure(songId: string, input: AnalyzeSongS
 export async function getSongs(userId: string) {
     try {
         const songsCollection = collection(db, 'songs');
-        const q = query(songsCollection, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+        const q = query(songsCollection, where('userId', '==', userId));
         const songsSnapshot = await getDocs(q);
         
         const songs: Song[] = songsSnapshot.docs.map(doc => {
@@ -212,6 +212,9 @@ export async function getSongs(userId: string) {
                 createdAt: createdAt,
             };
         });
+
+        // Sort manually after fetching to avoid composite index requirement
+        songs.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
 
         return { success: true, songs };
     } catch (error) {
