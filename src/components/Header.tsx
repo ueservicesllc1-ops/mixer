@@ -3,10 +3,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Rewind, Play, Pause, Square, FastForward, Settings, RadioTower, Disc, Loader2, DownloadCloud, Timer, Plus, Minus, RotateCcw, Wifi, WifiOff } from 'lucide-react';
-import { Circle } from './icons';
-import { Progress } from './ui/progress';
-import { cn, transposeNote } from '@/lib/utils';
+import { Rewind, Play, Pause, Square, FastForward, Settings, Loader2, Plus, Minus, RotateCcw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import Timeline from './Timeline';
 import { SongStructure } from '@/ai/flows/song-structure';
 import SettingsDialog from './SettingsDialog';
@@ -15,17 +13,17 @@ import type { Song } from '@/actions/songs';
 import VolumeSlider from './VolumeSlider';
 
 interface HeaderProps {
-  isPlaying?: boolean;
-  isPreparingPlay?: boolean;
-  onPlay?: () => void;
-  onPause?: () => void;
-  onStop?: () => void;
+  isPlaying: boolean;
+  isPreparingPlay: boolean;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
   onRewind?: () => void;
   onFastForward?: () => void;
-  onSeek?: (position: number) => void;
-  currentTime?: number;
-  duration?: number;
-  isReadyToPlay?: boolean;
+  onSeek: (position: number) => void;
+  currentTime: number;
+  duration: number;
+  isReadyToPlay: boolean;
   songStructure?: SongStructure | null;
   fadeOutDuration: number;
   onFadeOutDurationChange: (duration: number) => void;
@@ -101,7 +99,7 @@ const Header: React.FC<HeaderProps> = ({
     if (currentBPM) onBpmChange(currentBPM + amount);
   }
 
-  const displayNote = activeSong?.key ? transposeNote(activeSong.key, pitch) : '-';
+  const displayNote = activeSong?.key ? cn(activeSong.key, pitch) : '-';
 
   return (
     <header className="flex flex-col bg-card/50 border-b border-border p-2 gap-2 rounded-lg">
@@ -172,7 +170,7 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       
-      <Timeline currentTime={currentTime} duration={duration} onSeek={onSeek} structure={songStructure} isReady={!!isReadyToPlay} />
+      <Timeline currentTime={currentTime} duration={duration} onSeek={onSeek} structure={songStructure} isReady={isReadyToPlay} />
 
     </header>
   );
