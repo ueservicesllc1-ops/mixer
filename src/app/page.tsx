@@ -307,7 +307,8 @@ const DawPage = () => {
       newVolumes[track.id] = volumes[track.id] ?? 100;
     });
     setVolumes(newVolumes);
-  }, [activeTracks, volumes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTracks]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -558,3 +559,5 @@ const DawPage = () => {
 };
 
 export default DawPage;
+
+    
