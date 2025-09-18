@@ -273,8 +273,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         return;
     }
     
-    // Inicia el pre-cacheo y el loader
-    onSongCaching();
+    // Inicia el pre-cacheo
     preCacheSongTracks(song);
     
     // Iterar y añadir cada pista individualmente
@@ -304,6 +303,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         title: '¡Canción añadida!',
         description: `"${song.name}" se ha añadido a "${selectedSetlist.name}".`,
       });
+      // Llamar al loader después de que todo se haya guardado
+      onSongCaching();
     }
   };
   

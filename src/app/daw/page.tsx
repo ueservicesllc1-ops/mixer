@@ -249,29 +249,22 @@ const DawPage = () => {
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                    let arrayBuffer = await getCachedArrayBuffer(track.fileKey);
+                    const isCached = await getCachedArrayBuffer(track.fileKey);
+                    
+                    const url = isCached 
+                        ? URL.createObjectURL(new Blob([isCached!])) 
+                        : `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
 
-                    if (!arrayBuffer) {
-                        const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
-                        const response = await fetch(streamingUrl);
-                        if (!response.ok) {
-                            throw new Error(`Failed to fetch track: ${response.statusText}`);
+                    const player = new Tone.Player(url, (p) => {
+                        // This callback runs after the player is loaded.
+                        const playerDuration = p.buffer.duration;
+                        if (playerDuration > maxDuration) {
+                            maxDuration = playerDuration;
+                            setDuration(maxDuration);
                         }
-                        arrayBuffer = await response.arrayBuffer();
-                        cacheArrayBuffer(track.fileKey, arrayBuffer).catch(err => {
-                            console.warn("Failed to cache track:", track.fileKey, err);
-                        });
-                    }
-
-                    const buffer = await Tone.context.decodeAudioData(arrayBuffer);
+                    });
                     
-                    const player = new Tone.Player(buffer);
                     player.loop = true;
-                    
-                    const playerDuration = player.buffer.duration;
-                    if (playerDuration > maxDuration) {
-                        maxDuration = playerDuration;
-                    }
 
                     const volume = new Tone.Volume(0);
                     const pitchShift = new Tone.PitchShift({ pitch: pitch });
@@ -294,7 +287,6 @@ const DawPage = () => {
             });
 
             await Promise.allSettled(loadPromises);
-            setDuration(maxDuration);
         };
 
         prepareAudioNodes();
