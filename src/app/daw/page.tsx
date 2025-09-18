@@ -184,8 +184,8 @@ const DawPage = () => {
 
   useEffect(() => {
     const fetchLastSetlist = async () => {
-      const userId = user?.uid ?? 'user_placeholder_id';
-      const result = await getSetlists(userId);
+      if (!user) return;
+      const result = await getSetlists(user.uid);
       if (result.success && result.setlists && result.setlists.length > 0) {
         setInitialSetlist(result.setlists[0]);
       }
@@ -249,23 +249,21 @@ const DawPage = () => {
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                    const cachedBuffer = await getCachedArrayBuffer(track.fileKey);
+                    let arrayBuffer = await getCachedArrayBuffer(track.fileKey);
 
-                    let buffer: AudioBuffer;
-                    if (cachedBuffer) {
-                        // Cache HIT: Decode ArrayBuffer to AudioBuffer
-                        buffer = await Tone.context.decodeAudioData(cachedBuffer);
-                    } else {
-                        // Cache MISS: Stream from URL, get AudioBuffer, then cache as ArrayBuffer
+                    if (!arrayBuffer) {
                         const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
-                        const tempPlayer = new Tone.Player(streamingUrl);
-                        await tempPlayer.load(streamingUrl);
-                        buffer = tempPlayer.buffer.get()!;
-                        cacheArrayBuffer(track.fileKey, buffer.getChannelData(0).buffer).catch(err => {
+                        const response = await fetch(streamingUrl);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch track: ${response.statusText}`);
+                        }
+                        arrayBuffer = await response.arrayBuffer();
+                        cacheArrayBuffer(track.fileKey, arrayBuffer).catch(err => {
                             console.warn("Failed to cache track:", track.fileKey, err);
                         });
-                        tempPlayer.dispose();
                     }
+
+                    const buffer = await Tone.context.decodeAudioData(arrayBuffer);
                     
                     const player = new Tone.Player(buffer);
                     player.loop = true;
