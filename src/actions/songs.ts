@@ -1,4 +1,3 @@
-
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -6,6 +5,7 @@ import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, dele
 import { analyzeSongStructure, SongStructure, AnalyzeSongStructureInput } from '@/ai/flows/song-structure';
 import { synchronizeLyricsFlow, LyricsSyncInput, LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import { transcribeLyricsFlow, TranscribeLyricsInput } from '@/ai/flows/transcribe-lyrics';
+import { deleteFileFromB2 } from './upload';
 
 
 // Represents a single track file within a song
@@ -219,7 +219,13 @@ export async function getSongs() {
 
 export async function deleteSong(song: Song) {
     try {
-        // We only delete the document from Firestore, not the files from B2.
+        // Primero, eliminar todos los archivos de audio asociados en B2
+        if (song.tracks && song.tracks.length > 0) {
+            const deletePromises = song.tracks.map(track => deleteFileFromB2(track.fileKey));
+            await Promise.all(deletePromises);
+        }
+
+        // Luego, eliminar el documento de Firestore
         const songRef = doc(db, 'songs', song.id);
         await deleteDoc(songRef);
 

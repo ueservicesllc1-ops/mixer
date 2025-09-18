@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -6,13 +5,11 @@ import { Button } from './ui/button';
 import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getSongs, Song, deleteSong, reanalyzeSongStructure } from '@/actions/songs';
+import { getSongs, Song } from '@/actions/songs';
 import CreateSetlistDialog from './CreateSetlistDialog';
 import { getSetlists, Setlist, addSongToSetlist, SetlistSong, removeSongFromSetlist } from '@/actions/setlists';
 import { format } from 'date-fns';
 import { useToast } from './ui/use-toast';
-import UploadSongDialog from './UploadSongDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { blobToDataURI } from '@/lib/utils';
-import EditSongDialog from './EditSongDialog';
 import { cacheArrayBuffer, getCachedArrayBuffer } from '@/lib/audiocache';
 
 
@@ -53,13 +48,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [selectedSetlist, setSelectedSetlist] = useState<Setlist | null>(null);
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
-  const [isLibrarySheetForEditingOpen, setIsLibrarySheetForEditingOpen] = useState(false);
-  const [isEditingSetlist, setIsEditingSetlist] = useState(false);
-  const [showLibraryInEdit, setShowLibraryInEdit] = useState(false);
-  const [songToEdit, setSongToEdit] = useState<Song | null>(null);
-  const [songToDelete, setSongToDelete] = useState<Song | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [analyzingSongId, setAnalyzingSongId] = useState<string | null>(null);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
   const [cachingSongs, setCachingSongs] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
@@ -120,17 +108,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     onSetlistSelected(setlist);
     setIsSetlistSheetOpen(false);
   }
-
-  const clearSelectedSetlist = () => {
-    onSetlistSelected(null);
-  }
-
-  const handleSongUpdated = (updatedSong: Song) => {
-    const updatedSongs = songs.map(s => s.id === updatedSong.id ? updatedSong : s);
-    setSongs(updatedSongs);
-    onSongsFetched(updatedSongs);
-    setSongToEdit(null); // Cierra el diálogo de edición
-  };
 
   const preCacheSongTracks = async (song: Song) => {
     setCachingSongs(prev => ({ ...prev, [song.id]: true }));
@@ -266,80 +243,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         setSongToRemoveFromSetlist(null);
     }
   };
-  
-  const confirmDeleteSong = async () => {
-    if (!songToDelete) return;
-    setIsDeleting(true);
 
-    const result = await deleteSong(songToDelete);
-    if (result.success) {
-        toast({
-            title: '¡Canción eliminada!',
-            description: `"${songToDelete.name}" ha sido eliminada de la biblioteca.`,
-        });
-        // Remove from local state for instant feedback
-        setSongs(prevSongs => prevSongs.filter(s => s.id !== songToDelete.id));
-    } else {
-        toast({
-            variant: 'destructive',
-            title: 'Error al eliminar',
-            description: result.error || 'No se pudo eliminar la canción.',
-        });
-    }
-
-    setIsDeleting(false);
-    setSongToDelete(null);
-  };
-  
-  const handleReanalyze = async (song: Song) => {
-    if (!song.tracks || song.tracks.length === 0) {
-      toast({ variant: 'destructive', title: 'Sin pistas', description: `"${song.name}" no tiene pistas para analizar.`});
-      return;
-    }
-
-    const cuesTrack = song.tracks.find(t => t.name.trim().toUpperCase() === 'CUES');
-    if (!cuesTrack) {
-        toast({ variant: 'destructive', title: 'Sin pista de Cues', description: `"${song.name}" no tiene una pista llamada 'CUES'.`});
-        return;
-    }
-
-    setAnalyzingSongId(song.id);
-    toast({ title: 'Iniciando análisis...', description: 'Descargando pista de Cues para el análisis.' });
-
-    try {
-        const response = await fetch(cuesTrack.url);
-        if (!response.ok) throw new Error('Failed to download Cues track for analysis.');
-        const audioBlob = await response.blob();
-        
-        const audioDataUri = await blobToDataURI(audioBlob);
-
-        const result = await reanalyzeSongStructure(song.id, { audioDataUri });
-        if (result.success && result.structure) {
-            toast({
-                title: 'Análisis completado',
-                description: `Se ha analizado la estructura de "${song.name}".`,
-            });
-            const updatedSongs = songs.map(s => 
-                s.id === song.id ? { ...s, structure: result.structure } : s
-            );
-            setSongs(updatedSongs);
-            onSongsFetched(updatedSongs);
-        } else {
-            throw new Error(result.error || 'Ocurrió un error desconocido durante el análisis.');
-        }
-    } catch (error) {
-        toast({
-            variant: 'destructive',
-            title: 'Error en el análisis',
-            description: (error as Error).message,
-        });
-    } finally {
-        setAnalyzingSongId(null);
-    }
-  };
-
-
-  const renderSongLibrary = (forGlobal: boolean = false) => {
+  const renderSongLibrary = () => {
     if (isLoadingSongs) {
       return (
         <div className="flex justify-center items-center h-full">
@@ -352,14 +257,10 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       return <div className="text-destructive text-center p-4">{songsError}</div>;
     }
 
-    const librarySongs = forGlobal ? songs.slice(0,5) : songs; // Example: show only first 5 for global
-
-    if (librarySongs.length > 0) {
+    if (songs.length > 0) {
       return (
         <div className="space-y-2">
-          {librarySongs.map((song) => {
-            const hasCuesTrack = song.tracks && song.tracks.some(t => t.name.trim().toUpperCase() === 'CUES');
-            const isAnalyzing = analyzingSongId === song.id;
+          {songs.map((song) => {
             const isCaching = cachingSongs[song.id];
 
             return (
@@ -371,40 +272,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                     </div>
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {!forGlobal && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="w-8 h-8 text-muted-foreground hover:text-primary"
-                                onClick={() => setSongToEdit(song)}
-                            >
-                                <Pencil className="w-4 h-4" />
-                            </Button>
-                        )}
-                        {hasCuesTrack && !forGlobal && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="w-8 h-8 text-muted-foreground hover:text-primary"
-                                onClick={() => handleReanalyze(song)}
-                                disabled={isAnalyzing}
-                            >
-                                {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
-                            </Button>
-                        )}
-
-                        {!forGlobal && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                                onClick={() => setSongToDelete(song)}
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </Button>
-                        )}
-
-                        {selectedSetlist && (
+                         {selectedSetlist && (
                             <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={isCaching}>
                                 {isCaching ? <Loader2 className="w-5 h-5 animate-spin"/> : <PlusCircle className="w-5 h-5 text-primary" />}
                             </Button>
@@ -417,7 +285,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       );
     }
     
-    return <p className="text-muted-foreground text-center">No hay canciones en la biblioteca.</p>;
+    return <p className="text-muted-foreground text-center">No hay canciones en la biblioteca. Ve a la sección de administrador para subir canciones.</p>;
   };
 
   const getGroupedSongs = () => {
@@ -454,7 +322,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                   className="text-primary mt-2" 
                   onClick={() => {
                     handleFetchSongs();
-                    setIsLibrarySheetForEditingOpen(true);
+                    setIsLibrarySheetOpen(true);
                   }}>
                   <PlusCircle className="w-4 h-4 mr-2" />
                   Añadir canciones
@@ -539,33 +407,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
   return (
     <>
-    {songToEdit && (
-        <EditSongDialog
-            song={songToEdit}
-            isOpen={!!songToEdit}
-            onClose={() => setSongToEdit(null)}
-            onSongUpdated={handleSongUpdated}
-        />
-    )}
-    <AlertDialog open={!!songToDelete} onOpenChange={() => setSongToDelete(null)}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-                Esta acción quitará la canción <span className="font-bold text-foreground">"{songToDelete?.name}"</span> de la biblioteca.
-                No se eliminará el archivo de audio, por lo que podrá ser añadido de nuevo más tarde si es necesario.
-            </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteSong} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
-                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Sí, quitar de la biblioteca
-            </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
-
     <AlertDialog open={!!songToRemoveFromSetlist} onOpenChange={() => setSongToRemoveFromSetlist(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>
@@ -642,182 +483,24 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
               handleFetchSongs();
               setIsLibrarySheetOpen(true);
             }}>
-                <Library className="w-4 h-4" />
-                Biblioteca
+                <PlusCircle className="w-4 h-4" />
+                Añadir Canciones
             </Button>
-
-            {selectedSetlist && (
-                 <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-muted-foreground" 
-                    onClick={() => {
-                        setShowLibraryInEdit(false); // Reset state on open
-                        setIsEditingSetlist(true)}
-                    }
-                 >
-                    Editar setlist
-                </Button>
-            )}
         </div>
 
       <Sheet open={isLibrarySheetOpen} onOpenChange={setIsLibrarySheetOpen}>
         <SheetContent side="left" className="w-[600px] sm:w-[700px] bg-card/95 p-0">
           <SheetHeader className="p-4 pb-0">
-            <SheetTitle>Biblioteca de Canciones</SheetTitle>
+            <SheetTitle>Añadir Canciones a "{selectedSetlist?.name}"</SheetTitle>
             <SheetDescription>
-                Gestiona tus canciones o explora la biblioteca global.
+                Explora tu biblioteca de canciones y añádelas al setlist activo.
             </SheetDescription>
           </SheetHeader>
-          <Tabs defaultValue="local" className="h-full flex flex-col pt-2">
-            <TabsList className="mx-4">
-              <TabsTrigger value="local" className="gap-2"><Library className="w-4 h-4" /> Biblioteca Local</TabsTrigger>
-              <TabsTrigger value="global" className="gap-2"><Globe className="w-4 h-4"/> Biblioteca Global</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="local" className="flex-grow overflow-y-auto px-4">
-                <div className="flex justify-between items-center my-4">
-                  <h3 className="font-semibold">Biblioteca de Canciones</h3>
-                  <UploadSongDialog onUploadFinished={handleFetchSongs} />
-                </div>
-                {renderSongLibrary()}
-            </TabsContent>
-
-            <TabsContent value="global" className="flex-grow overflow-y-auto px-4">
-                <div className="flex justify-between items-center my-4">
-                  <h3 className="font-semibold">Biblioteca Global</h3>
-                </div>
-                {renderSongLibrary(true)}
-            </TabsContent>
-          </Tabs>
+          <div className="flex-grow overflow-y-auto px-4 mt-4">
+            {renderSongLibrary()}
+          </div>
         </SheetContent>
       </Sheet>
-
-      <Sheet open={isLibrarySheetForEditingOpen} onOpenChange={setIsLibrarySheetForEditingOpen}>
-        <SheetContent side="left" className="w-[600px] sm:w-[700px] bg-card/95 p-0">
-            <SheetHeader className="p-4 pb-0">
-                <SheetTitle>Añadir Canciones a "{selectedSetlist?.name}"</SheetTitle>
-                <SheetDescription>
-                Explora tus bibliotecas y añade canciones al setlist activo.
-                </SheetDescription>
-            </SheetHeader>
-            <Tabs defaultValue="local" className="flex flex-col h-full pt-2">
-            <TabsList className="mx-4">
-                <TabsTrigger value="local" className="gap-2"><Library className="w-4 h-4" /> Biblioteca Local</TabsTrigger>
-                <TabsTrigger value="global" className="gap-2"><Globe className="w-4 h-4"/> Biblioteca Global</TabsTrigger>
-            </TabsList>
-            <TabsContent value="local" className="flex-grow overflow-y-auto px-4">
-                <div className="flex justify-between items-center my-4">
-                <h3 className="font-semibold">Biblioteca de Canciones</h3>
-                <UploadSongDialog onUploadFinished={handleFetchSongs} />
-                </div>
-                {renderSongLibrary()}
-            </TabsContent>
-            <TabsContent value="global" className="flex-grow overflow-y-auto px-4">
-                <div className="flex justify-between items-center my-4">
-                <h3 className="font-semibold">Biblioteca Global</h3>
-                </div>
-                {renderSongLibrary(true)}
-            </TabsContent>
-            </Tabs>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet open={isEditingSetlist} onOpenChange={setIsEditingSetlist}>
-        <SheetContent side="right" className="w-3/4 max-w-none bg-card/95 p-0">
-            <SheetHeader className="p-6">
-                <SheetTitle>Editando: {selectedSetlist?.name}</SheetTitle>
-            </SheetHeader>
-            <div className={cn("grid h-full grid-rows-[1fr_auto] transition-all", showLibraryInEdit ? "grid-cols-3" : "grid-cols-2")}>
-                 {/* Columna Izquierda: Detalles del Setlist */}
-                <div className="flex flex-col gap-4 p-6 border-r border-border/50">
-                     <div className="aspect-square w-1/2 rounded-lg bg-secondary overflow-hidden">
-                        <Image
-                            src="https://picsum.photos/seed/setlist1/600/600"
-                            width={600}
-                            height={600}
-                            alt={selectedSetlist?.name ?? 'Setlist'}
-                            className="object-cover w-full h-full"
-                            data-ai-hint="abstract music"
-                        />
-                    </div>
-                    <div className="rounded-md bg-black border border-amber-400/20 p-4 flex-grow">
-                        <p className="font-mono font-bold text-2xl text-amber-400 flex-grow [text-shadow:0_0_8px_theme(colors.amber.400)]">
-                            {selectedSetlist?.name}
-                        </p>
-                        <div className="flex items-center gap-2 text-amber-400/60 mt-2">
-                            <Calendar className="w-4 h-4" />
-                            <p className="text-sm font-mono">{selectedSetlist ? format(new Date(selectedSetlist.date), 'PPP') : ''}</p>
-                        </div>
-                    </div>
-                </div>
-
-                 {/* Columna Central: Canciones del Setlist */}
-                <div className="flex flex-col gap-4 p-6 border-r border-border/50">
-                    <div className='flex justify-between items-center'>
-                        <h4 className="font-semibold">Canciones en el Setlist</h4>
-                        <Button onClick={() => setShowLibraryInEdit(prev => !prev)} variant="outline" size="sm" className="gap-2">
-                            <PlusCircle className="w-4 h-4" />
-                            {showLibraryInEdit ? 'Cerrar Biblioteca' : 'Añadir Canciones'}
-                        </Button>
-                    </div>
-                    <div className="space-y-2 overflow-y-auto pr-2 no-scrollbar">
-                        {groupedSongs.length > 0 ? groupedSongs.map((songGroup, index) => (
-                             <div key={songGroup.songId} className="flex items-center gap-3 p-2 rounded-md bg-black border border-amber-400/10">
-                                <span className="font-mono text-sm text-amber-400/50">{index + 1}</span>
-                                <div className="flex-grow">
-                                    <p className="font-mono font-semibold text-amber-400 [text-shadow:0_0_4px_theme(colors.amber.400)]">{songGroup.songName}</p>
-                                    <p className="text-xs text-amber-400/60 font-mono">{songs.find(s => s.id === songGroup.songId)?.artist}</p>
-                                </div>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                                    onClick={() => setSongToRemoveFromSetlist({songId: songGroup.songId, songName: songGroup.songName})}
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
-                             </div>
-                        )) : (
-                            <div className="text-center py-10 text-muted-foreground">
-                                <p>Aún no hay canciones.</p>
-                                <p>Haz clic en "Añadir Canciones" para empezar.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Columna Derecha: Biblioteca de canciones (condicional) */}
-                {showLibraryInEdit && (
-                    <div className="flex flex-col h-full">
-                        <Tabs defaultValue="local" className="flex flex-col h-full pt-2">
-                            <TabsList className="mx-4">
-                                <TabsTrigger value="local" className="gap-2"><Library className="w-4 h-4" /> Local</TabsTrigger>
-                                <TabsTrigger value="global" className="gap-2"><Globe className="w-4 h-4"/> Global</TabsTrigger>
-                            </TabsList>
-                            
-                            <TabsContent value="local" className="flex-grow overflow-y-auto px-4 mt-0">
-                                <div className="flex justify-between items-center my-4">
-                                <h3 className="font-semibold">Biblioteca Local</h3>
-                                <UploadSongDialog onUploadFinished={handleFetchSongs} />
-                                </div>
-                                {renderSongLibrary()}
-                            </TabsContent>
-
-                            <TabsContent value="global" className="flex-grow overflow-y-auto px-4 mt-0">
-                                <div className="flex justify-between items-center my-4">
-                                <h3 className="font-semibold">Biblioteca Global</h3>
-                                </div>
-                                {renderSongLibrary(true)}
-                            </TabsContent>
-                        </Tabs>
-                    </div>
-                )}
-
-            </div>
-        </SheetContent>
-      </Sheet>
-
     </div>
     </>
   );

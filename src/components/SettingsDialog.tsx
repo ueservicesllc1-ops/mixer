@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -15,11 +14,12 @@ import { Separator } from './ui/separator';
 import { Label } from './ui/label';
 import { Slider } from './ui/slider';
 import { Switch } from './ui/switch';
-import { ChevronRight, X, Heart, Rss } from 'lucide-react';
+import { ChevronRight, X, Heart, Rss, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SamplerPadSettings from './SamplerPadSettings';
+import Link from 'next/link';
 
-type SettingsTab = 'General' | 'MIDI' | 'Audio' | 'Sampler' | 'About';
+type SettingsTab = 'General' | 'Sampler' | 'Admin' | 'About';
 
 interface SettingsRowProps {
   label: string;
@@ -93,7 +93,7 @@ const SettingsDialog = ({
   const [activeTab, setActiveTab] = useState<SettingsTab>('General');
   const [tonicFollows, setTonicFollows] = useState(true);
 
-  const tabs: SettingsTab[] = ['General', 'Sampler', 'MIDI', 'Audio', 'About'];
+  const tabs: SettingsTab[] = ['General', 'Sampler', 'Admin', 'About'];
 
   const renderGeneralSettings = () => {
     return (
@@ -111,6 +111,24 @@ const SettingsDialog = ({
             <Separator />
             <SettingsSwitchRow label="Tonic Pad follows Key of Tracks" checked={tonicFollows} onCheckedChange={setTonicFollows} />
             <Separator />
+        </div>
+    );
+  }
+
+  const renderAdminSettings = () => {
+    return (
+        <div className="max-w-md mx-auto text-center">
+            <HardDrive className="w-16 h-16 mx-auto text-primary mb-4" />
+            <h2 className="text-2xl font-bold">Gestión de Canciones</h2>
+            <p className="text-muted-foreground mt-2 mb-6">
+                La subida y edición de canciones debe hacerse desde un ordenador de escritorio para un mejor manejo de los archivos de audio.
+            </p>
+            <Link href="/admin" passHref>
+                <Button size="lg" className="gap-2">
+                    Ir al Administrador de Canciones
+                    <ChevronRight />
+                </Button>
+            </Link>
         </div>
     );
   }
@@ -190,12 +208,17 @@ const SettingsDialog = ({
                         <SamplerPadSettings />
                     </div>
                 )}
+                 {activeTab === 'Admin' && (
+                    <div className="flex items-center justify-center h-full">
+                        {renderAdminSettings()}
+                    </div>
+                )}
                 {activeTab === 'About' && (
                     <div className="flex items-center justify-center h-full">
                         {renderAboutSettings()}
                     </div>
                 )}
-                {activeTab !== 'General' && activeTab !== 'About' && activeTab !== 'Sampler' && (
+                {activeTab !== 'General' && activeTab !== 'About' && activeTab !== 'Sampler' && activeTab !== 'Admin' && (
                     <div className="flex items-center justify-center h-full">
                         <p className="text-muted-foreground text-2xl">Settings for {activeTab}</p>
                     </div>
