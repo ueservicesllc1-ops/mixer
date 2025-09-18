@@ -6,11 +6,15 @@ import { onAuthStateChanged, User as FirebaseAuthUser, signOut as firebaseSignOu
 import { auth, db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { doc, setDoc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, getDoc, runTransaction, DocumentData } from 'firebase/firestore';
+
+export type UserRole = 'trial' | 'premium';
 
 // Interfaz extendida para incluir nuestros datos personalizados
 export interface AppUser extends FirebaseAuthUser {
     shortId?: string;
+    role?: UserRole;
+    songsUploadedCount?: number;
 }
 
 interface AuthContextType {
@@ -29,51 +33,57 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<string | null> => {
+const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<Partial<AppUser>> => {
     const userRef = doc(db, 'users', user.uid);
     const userSnap = await getDoc(userRef);
+    const existingData = userSnap.exists() ? userSnap.data() : {};
 
-    // Si el usuario ya existe y tiene un shortId, no hacemos nada.
-    if (userSnap.exists() && userSnap.data().shortId) {
-        return userSnap.data().shortId;
+    // Si el usuario ya existe y tiene un shortId, no hacemos nada más que devolver los datos.
+    if (existingData.shortId) {
+        return {
+            shortId: existingData.shortId,
+            role: existingData.role || 'trial',
+            songsUploadedCount: existingData.songsUploadedCount || 0,
+        };
     }
 
     const counterRef = doc(db, 'counters', 'users');
     let newShortId = '';
+    let newRole: UserRole = 'trial';
+    let newSongsUploadedCount = 0;
 
     try {
         await runTransaction(db, async (transaction) => {
             const counterDoc = await transaction.get(counterRef);
-            let newCount;
-            if (!counterDoc.exists()) {
-                newCount = 1;
-            } else {
-                newCount = (counterDoc.data().count || 0) + 1;
+            let newCount = 1;
+            if (counterDoc.exists()) {
+                newCount = (counterDoc.data()?.count || 0) + 1;
             }
 
             const initial = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
             const paddedCount = String(newCount).padStart(4, '0');
             newShortId = `${initial}${paddedCount}`;
-
-            // Actualizar el contador
-            transaction.set(counterRef, { count: newCount });
-
-            // Crear o actualizar el documento del usuario con el nuevo shortId
-            const userData = {
+            
+            const userData: DocumentData = {
+                ...existingData,
                 uid: user.uid,
                 email: user.email,
                 displayName: user.displayName,
                 photoURL: user.photoURL,
-                createdAt: userSnap.exists() ? userSnap.data().createdAt : new Date().toISOString(),
+                createdAt: existingData.createdAt || new Date().toISOString(),
                 shortId: newShortId,
+                role: existingData.role || newRole,
+                songsUploadedCount: existingData.songsUploadedCount || newSongsUploadedCount,
             };
+            
+            transaction.set(counterRef, { count: newCount });
             transaction.set(userRef, userData, { merge: true });
         });
         console.log(`Assigned shortId ${newShortId} to user ${user.uid}`);
-        return newShortId;
+        return { shortId: newShortId, role: newRole, songsUploadedCount: newSongsUploadedCount };
     } catch (e) {
         console.error("Transaction failed: ", e);
-        return null;
+        return {};
     }
 };
 
@@ -87,14 +97,16 @@ const fetchAppUser = async (firebaseUser: FirebaseAuthUser): Promise<AppUser | n
         return {
             ...firebaseUser,
             shortId: firestoreData.shortId,
+            role: firestoreData.role,
+            songsUploadedCount: firestoreData.songsUploadedCount,
         };
     } else {
         // Esto podría pasar si un usuario existe en Auth pero no en Firestore (caso raro)
         // Lo creamos ahora
-        const shortId = await generateAndAssignShortId(firebaseUser);
+        const extraData = await generateAndAssignShortId(firebaseUser);
         return {
             ...firebaseUser,
-            shortId: shortId || undefined,
+            ...extraData,
         };
     }
 }

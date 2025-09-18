@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2 } from 'lucide-react';
-import { doc, setDoc, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, runTransaction, DocumentData } from 'firebase/firestore';
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="24px" height="24px" {...props}>
@@ -74,13 +74,15 @@ export default function SignupForm() {
         const paddedCount = String(newCount).padStart(4, '0');
         const shortId = `${initial}${paddedCount}`;
         
-        const userData = {
+        const userData: DocumentData = {
             uid: user.uid,
             email: user.email,
             displayName: data.name,
             photoURL: user.photoURL,
             createdAt: new Date().toISOString(),
-            shortId: shortId
+            shortId: shortId,
+            role: 'trial',
+            songsUploadedCount: 0,
         };
         
         transaction.set(counterRef, { count: newCount });

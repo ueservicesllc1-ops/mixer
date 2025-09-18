@@ -2,12 +2,13 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, deleteDoc, updateDoc, getDoc, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, deleteDoc, updateDoc, getDoc, where, runTransaction } from 'firebase/firestore';
 import { analyzeSongStructure, SongStructure, AnalyzeSongStructureInput } from '@/ai/flows/song-structure';
 import { synchronizeLyricsFlow, LyricsSyncInput, LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import { transcribeLyricsFlow, TranscribeLyricsInput } from '@/ai/flows/transcribe-lyrics';
 import { deleteFileFromB2 } from './upload';
 
+const TRIAL_SONG_LIMIT = 3;
 
 // Represents a single track file within a song
 export interface TrackFile {
@@ -56,6 +57,7 @@ const toTitleCase = (str: string) => {
 
 export async function saveSong(data: NewSong) {
   try {
+    const userRef = doc(db, 'users', data.userId);
     const songsCollection = collection(db, 'songs');
 
     // Remove non-serializable 'handle' from tracks before saving to Firestore
@@ -66,21 +68,46 @@ export async function saveSong(data: NewSong) {
         name: toTitleCase(data.name),
         artist: toTitleCase(data.artist),
         syncOffset: data.syncOffset || 0,
-        tracks: tracksToSave
+        tracks: tracksToSave,
+        createdAt: serverTimestamp(),
     };
     
-    const newDoc = await addDoc(songsCollection, {
-      ...formattedData,
-      createdAt: serverTimestamp(),
+    let newSongDoc;
+    await runTransaction(db, async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) {
+            throw new Error("El usuario no existe.");
+        }
+
+        const userData = userDoc.data();
+        const userRole = userData.role || 'trial';
+        const songsUploadedCount = userData.songsUploadedCount || 0;
+
+        if (userRole === 'trial' && songsUploadedCount >= TRIAL_SONG_LIMIT) {
+            throw new Error(`Has alcanzado el límite de ${TRIAL_SONG_LIMIT} canciones para la prueba. Suscríbete para subir más.`);
+        }
+        
+        // Crear el nuevo documento de canción
+        const newDocRef = doc(songsCollection); // Genera una referencia con un ID nuevo
+        transaction.set(newDocRef, formattedData);
+        
+        // Actualizar el contador de canciones del usuario
+        transaction.update(userRef, { songsUploadedCount: songsUploadedCount + 1 });
+
+        newSongDoc = newDocRef; // Guardamos la referencia para usarla después de la transacción
     });
+    
+    if (!newSongDoc) {
+      throw new Error("No se pudo crear la referencia a la nueva canción.");
+    }
 
     const songData: Song = {
-      id: newDoc.id,
+      id: newSongDoc.id,
       ...data // Devolvemos la data original con el handle para el cliente
     }
     
     // Disparar el análisis de estructura en segundo plano
-    runStructureAnalysisOnUpload(newDoc.id, data.tracks);
+    runStructureAnalysisOnUpload(newSongDoc.id, data.tracks);
 
     return { success: true, song: songData };
   } catch (error) {
@@ -234,6 +261,8 @@ export async function deleteSong(song: Song) {
         // Luego, eliminar el documento de Firestore
         const songRef = doc(db, 'songs', song.id);
         await deleteDoc(songRef);
+        
+        // Opcional: Decrementar el contador del usuario. Decidimos no hacerlo para evitar abuso.
 
         return { success: true };
     } catch (error) {
