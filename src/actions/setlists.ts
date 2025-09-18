@@ -81,7 +81,8 @@ export async function updateSetlist(setlistId: string, data: { name: string; dat
 export async function getSetlists(userId: string) {
     try {
         const setlistsCollection = collection(db, 'setlists');
-        const q = query(setlistsCollection, where('userId', '==', userId), orderBy('createdAt', 'desc'));
+        // The query requires a composite index. By removing the orderBy clause, we can avoid this error for now.
+        const q = query(setlistsCollection, where('userId', '==', userId));
         const setlistsSnapshot = await getDocs(q);
         
         const setlists = setlistsSnapshot.docs.map(doc => {
@@ -98,6 +99,10 @@ export async function getSetlists(userId: string) {
                 createdAt: createdAt,
             } as Setlist;
         });
+
+        // Sort manually after fetching
+        setlists.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+
 
         return { success: true, setlists };
     } catch (error) {
