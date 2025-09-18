@@ -50,10 +50,9 @@ type SetlistFormValues = z.infer<typeof setlistFormSchema>;
 
 interface CreateSetlistDialogProps {
   onSetlistCreated: () => void;
-  isOnline: boolean;
 }
 
-const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCreated, isOnline }) => {
+const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCreated }) => {
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
@@ -67,14 +66,6 @@ const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCrea
   });
 
   async function onSubmit(data: SetlistFormValues) {
-    if (!isOnline) {
-      toast({
-        variant: 'destructive',
-        title: 'Modo Offline',
-        description: 'No se pueden crear setlists sin conexión.',
-      });
-      return;
-    }
     setIsSaving(true);
     try {
       // NOTA: El userId está hardcodeado. Se deberá reemplazar con el del usuario autenticado.
@@ -106,7 +97,7 @@ const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCrea
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="w-full mt-auto gap-2" disabled={!isOnline} title={!isOnline ? 'Necesitas conexión para crear un setlist' : ''}>
+        <Button className="w-full mt-auto gap-2">
             <PlusCircle className="w-4 h-4" />
             Crear nuevo setlist
         </Button>

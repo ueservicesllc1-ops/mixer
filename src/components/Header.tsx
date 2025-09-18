@@ -13,13 +13,6 @@ import SettingsDialog from './SettingsDialog';
 import { Input } from './ui/input';
 import type { Song } from '@/actions/songs';
 import VolumeSlider from './VolumeSlider';
-import { useB2Connection } from '@/contexts/B2ConnectionContext';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 interface HeaderProps {
   isPlaying?: boolean;
@@ -48,7 +41,6 @@ interface HeaderProps {
   masterVolume: number;
   onMasterVolumeChange: (volume: number) => void;
   masterVuLevel: number;
-  isOnline: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -77,9 +69,7 @@ const Header: React.FC<HeaderProps> = ({
   masterVolume,
   onMasterVolumeChange,
   masterVuLevel,
-  isOnline,
 }) => {
-  const { status: b2Status, operationTime } = useB2Connection();
   const currentBPM = activeSong?.tempo ? activeSong.tempo * playbackRate : null;
   const [bpmInput, setBpmInput] = useState<string>('');
 
@@ -114,13 +104,6 @@ const Header: React.FC<HeaderProps> = ({
   }
 
   const displayNote = activeSong?.key ? transposeNote(activeSong.key, pitch) : '-';
-
-  const B2_STATUS_MAP = {
-    idle: { color: 'text-muted-foreground', tooltip: 'B2: Inactivo' },
-    'in-progress': { color: 'text-yellow-400 animate-pulse', tooltip: 'B2: Operación en curso...' },
-    success: { color: 'text-green-400', tooltip: 'B2: Última operación exitosa' },
-    error: { color: 'text-destructive', tooltip: 'B2: Falló la última operación' },
-  };
 
   return (
     <header className="flex flex-col bg-card/50 border-b border-border p-2 gap-2 rounded-lg">
@@ -185,29 +168,7 @@ const Header: React.FC<HeaderProps> = ({
         </div>
         
         <div className="flex items-center justify-end gap-2 ml-auto">
-             <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className={cn('flex items-center justify-center w-10 h-10 rounded-full', isOnline ? 'bg-green-500/20' : 'bg-destructive/20')}>
-                      {isOnline ? <Wifi className="w-5 h-5 text-green-400" /> : <WifiOff className="w-5 h-5 text-destructive" />}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent><p>{isOnline ? 'Conectado a internet' : 'Modo offline'}</p></TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2">
-                    <DownloadCloud className={cn("w-5 h-5", B2_STATUS_MAP[b2Status].color)} />
-                    {b2Status === 'in-progress' && (
-                      <span className="font-mono text-xs text-yellow-400">{operationTime}s</span>
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent><p>{B2_STATUS_MAP[b2Status].tooltip}</p></TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <SettingsDialog fadeOutDuration={fadeOutDuration} onFadeOutDurationChange={onFadeOutDurationChange} isPanVisible={isPanVisible} onPanVisibilityChange={onPanVisibilityChange} isOnline={isOnline}>
+            <SettingsDialog fadeOutDuration={fadeOutDuration} onFadeOutDurationChange={onFadeOutDurationChange} isPanVisible={isPanVisible} onPanVisibilityChange={onPanVisibilityChange}>
                 <Button variant="ghost" size="icon"><Settings /></Button>
             </SettingsDialog>
         </div>

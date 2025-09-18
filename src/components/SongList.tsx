@@ -33,7 +33,6 @@ interface SongListProps {
   onSetlistSelected: (setlist: Setlist | null) => void;
   onSongSelected: (songId: string) => void;
   onSongsFetched: (songs: Song[]) => void;
-  isOnline: boolean;
 }
 
 type SongToRemove = {
@@ -41,7 +40,7 @@ type SongToRemove = {
     songName: string;
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, isOnline }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched }) => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
   const [songsError, setSongsError] = useState<string | null>(null);
@@ -81,11 +80,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         setSongs(result.songs);
         onSongsFetched(result.songs); // Notificar al padre sobre las canciones
       } else {
-        if (isOnline) {
-          setSongsError(result.error || 'No se pudieron cargar las canciones.');
-        } else {
-          setSongsError('Modo offline: No se pueden cargar las canciones.');
-        }
+        setSongsError(result.error || 'No se pudieron cargar las canciones.');
       }
     } catch (err) {
       setSongsError('Ocurrió un error al buscar las canciones.');
@@ -98,7 +93,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   useEffect(() => {
     handleFetchSongs();
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline]);
+  }, []);
 
   const handleFetchSetlists = async () => {
     setIsLoadingSetlists(true);
@@ -110,11 +105,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       if (result.success && result.setlists) {
         setSetlists(result.setlists);
       } else {
-         if (isOnline) {
-          setSetlistsError(result.error || 'No se pudieron cargar los setlists.');
-        } else {
-          setSetlistsError('Modo offline: No se pueden cargar los setlists.');
-        }
+        setSetlistsError(result.error || 'No se pudieron cargar los setlists.');
       }
     } catch (err) {
       setSetlistsError('Ocurrió un error al buscar los setlists.');
@@ -141,11 +132,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
-
-    if (!isOnline) {
-        toast({ variant: 'destructive', title: 'Modo Offline', description: 'No se pueden añadir canciones al setlist sin conexión.' });
-        return;
-    }
 
     // Cuando se añade una canción (que es un grupo de pistas),
     // se añaden todas sus pistas al setlist.
@@ -201,11 +187,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   
   const handleRemoveSongFromSetlist = async (songId: string, songName: string) => {
     if (!selectedSetlist) return;
-
-     if (!isOnline) {
-        toast({ variant: 'destructive', title: 'Modo Offline', description: 'No se pueden quitar canciones del setlist sin conexión.' });
-        return;
-    }
 
     const tracksToRemove = selectedSetlist.songs.filter(s => s.songId === songId);
     if (tracksToRemove.length === 0) return;
@@ -270,11 +251,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   };
   
   const handleReanalyze = async (song: Song) => {
-    if (!isOnline) {
-      toast({ variant: 'destructive', title: 'Modo Offline', description: 'El análisis de estructura requiere conexión a internet.'});
-      return;
-    }
-
     if (!song.tracks || song.tracks.length === 0) {
       toast({ variant: 'destructive', title: 'Sin pistas', description: `"${song.name}" no tiene pistas para analizar.`});
       return;
@@ -359,7 +335,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                                 size="icon" 
                                 className="w-8 h-8 text-muted-foreground hover:text-primary"
                                 onClick={() => setSongToEdit(song)}
-                                disabled={!isOnline}
                             >
                                 <Pencil className="w-4 h-4" />
                             </Button>
@@ -370,7 +345,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                                 size="icon" 
                                 className="w-8 h-8 text-muted-foreground hover:text-primary"
                                 onClick={() => handleReanalyze(song)}
-                                disabled={isAnalyzing || !isOnline}
+                                disabled={isAnalyzing}
                             >
                                 {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
                             </Button>
@@ -382,14 +357,13 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                                 size="icon" 
                                 className="w-8 h-8 text-muted-foreground hover:text-destructive"
                                 onClick={() => setSongToDelete(song)}
-                                disabled={!isOnline}
                             >
                                 <Trash2 className="w-4 h-4" />
                             </Button>
                         )}
 
                         {selectedSetlist && (
-                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={!isOnline}>
+                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)}>
                                 <PlusCircle className="w-5 h-5 text-primary" />
                             </Button>
                         )}
@@ -439,8 +413,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                   onClick={() => {
                     handleFetchSongs();
                     setIsLibrarySheetForEditingOpen(true);
-                  }}
-                  disabled={!isOnline}>
+                  }}>
                   <PlusCircle className="w-4 h-4 mr-2" />
                   Añadir canciones
                 </Button>
@@ -503,7 +476,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                                     e.stopPropagation(); 
                                     setSongToRemoveFromSetlist({ songId: songGroup.songId, songName: songGroup.songName });
                                 }}
-                                disabled={!isOnline}
                             >
                                 <Trash2 className="w-4 h-4" />
                             </Button>
@@ -524,7 +496,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             isOpen={!!songToEdit}
             onClose={() => setSongToEdit(null)}
             onSongUpdated={handleSongUpdated}
-            isOnline={isOnline}
         />
     )}
     <AlertDialog open={!!songToDelete} onOpenChange={() => setSongToDelete(null)}>
@@ -609,7 +580,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                         <p className="text-muted-foreground text-center pt-10">Aún no has creado un setlist.</p>
                     )}
                     </div>
-                    <CreateSetlistDialog onSetlistCreated={handleFetchSetlists} isOnline={isOnline}/>
+                    <CreateSetlistDialog onSetlistCreated={handleFetchSetlists} />
                 </div>
             </SheetContent>
         </Sheet>
@@ -635,7 +606,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                         setShowLibraryInEdit(false); // Reset state on open
                         setIsEditingSetlist(true)}
                     }
-                    disabled={!isOnline}
                  >
                     Editar setlist
                 </Button>
@@ -659,7 +629,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             <TabsContent value="local" className="flex-grow overflow-y-auto px-4">
                 <div className="flex justify-between items-center my-4">
                   <h3 className="font-semibold">Biblioteca de Canciones</h3>
-                  <UploadSongDialog onUploadFinished={handleFetchSongs} isOnline={isOnline} />
+                  <UploadSongDialog onUploadFinished={handleFetchSongs} />
                 </div>
                 {renderSongLibrary()}
             </TabsContent>
@@ -690,7 +660,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             <TabsContent value="local" className="flex-grow overflow-y-auto px-4">
                 <div className="flex justify-between items-center my-4">
                 <h3 className="font-semibold">Biblioteca de Canciones</h3>
-                <UploadSongDialog onUploadFinished={handleFetchSongs} isOnline={isOnline} />
+                <UploadSongDialog onUploadFinished={handleFetchSongs} />
                 </div>
                 {renderSongLibrary()}
             </TabsContent>
@@ -737,7 +707,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                 <div className="flex flex-col gap-4 p-6 border-r border-border/50">
                     <div className='flex justify-between items-center'>
                         <h4 className="font-semibold">Canciones en el Setlist</h4>
-                        <Button onClick={() => setShowLibraryInEdit(prev => !prev)} variant="outline" size="sm" className="gap-2" disabled={!isOnline}>
+                        <Button onClick={() => setShowLibraryInEdit(prev => !prev)} variant="outline" size="sm" className="gap-2">
                             <PlusCircle className="w-4 h-4" />
                             {showLibraryInEdit ? 'Cerrar Biblioteca' : 'Añadir Canciones'}
                         </Button>
@@ -755,7 +725,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                                     size="icon" 
                                     className="w-8 h-8 text-muted-foreground hover:text-destructive"
                                     onClick={() => setSongToRemoveFromSetlist({songId: songGroup.songId, songName: songGroup.songName})}
-                                    disabled={!isOnline}
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -781,7 +750,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                             <TabsContent value="local" className="flex-grow overflow-y-auto px-4 mt-0">
                                 <div className="flex justify-between items-center my-4">
                                 <h3 className="font-semibold">Biblioteca Local</h3>
-                                <UploadSongDialog onUploadFinished={handleFetchSongs} isOnline={isOnline} />
+                                <UploadSongDialog onUploadFinished={handleFetchSongs} />
                                 </div>
                                 {renderSongLibrary()}
                             </TabsContent>

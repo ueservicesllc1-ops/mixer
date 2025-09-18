@@ -80,7 +80,6 @@ interface SettingsDialogProps {
     onFadeOutDurationChange: (duration: number) => void;
     isPanVisible: boolean;
     onPanVisibilityChange: (isVisible: boolean) => void;
-    isOnline: boolean;
 }
 
 
@@ -90,7 +89,6 @@ const SettingsDialog = ({
     onFadeOutDurationChange,
     isPanVisible,
     onPanVisibilityChange,
-    isOnline,
 }: SettingsDialogProps) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('General');
   const [tonicFollows, setTonicFollows] = useState(true);
@@ -189,7 +187,7 @@ const SettingsDialog = ({
                 )}
                  {activeTab === 'Sampler' && (
                     <div className="max-w-4xl mx-auto">
-                        <SamplerPadSettings isOnline={isOnline} />
+                        <SamplerPadSettings />
                     </div>
                 )}
                 {activeTab === 'About' && (

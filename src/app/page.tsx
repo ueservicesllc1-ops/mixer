@@ -6,14 +6,13 @@ import MixerGrid from '@/components/MixerGrid';
 import SongList from '@/components/SongList';
 import TonicPad from '@/components/TonicPad';
 import { getSetlists, Setlist, SetlistSong } from '@/actions/setlists';
-import { Song, TrackFile } from '@/actions/songs';
+import { Song } from '@/actions/songs';
 import { SongStructure } from '@/ai/flows/song-structure';
 import LyricsDisplay from '@/components/LyricsDisplay';
 import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
-import { B2ConnectionProvider, useB2Connection } from '@/contexts/B2ConnectionContext';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -28,7 +27,7 @@ type TrackNodes = Record<string, {
 }>;
 
 
-const DawPageContent = () => {
+const DawPage = () => {
   const [tracks, setTracks] = useState<SetlistSong[]>([]);
   const [soloTracks, setSoloTracks] = useState<string[]>([]);
   const [mutedTracks, setMutedTracks] = useState<string[]>([]);
@@ -70,24 +69,8 @@ const DawPageContent = () => {
   const [isYouTubePlayerOpen, setIsYouTubePlayerOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
 
-  const [isOnline, setIsOnline] = useState(true);
   const { toast } = useToast();
-  const { setStatus, startTimer, stopTimer } = useB2Connection();
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && typeof window.navigator !== 'undefined') {
-      setIsOnline(window.navigator.onLine);
-    }
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-  
   const initAudio = useCallback(async () => {
     if (!toneRef.current) {
         const Tone = await import('tone');
@@ -159,17 +142,6 @@ const DawPageContent = () => {
       activeTracksRef.current = activeTracks;
   }, [activeTracks]);
 
-  useEffect(() => {
-    const fetchLastSetlist = async () => {
-      const userId = 'user_placeholder_id';
-      const result = await getSetlists(userId);
-      if (result.success && result.setlists && result.setlists.length > 0) {
-        setInitialSetlist(result.setlists[0]);
-      }
-    };
-    fetchLastSetlist();
-  }, []);
-  
   const stopAllTracks = useCallback(() => {
     const Tone = toneRef.current;
     if (!Tone) return;
@@ -182,6 +154,17 @@ const DawPageContent = () => {
     setCurrentTime(0);
   }, []);
 
+  useEffect(() => {
+    const fetchLastSetlist = async () => {
+      const userId = 'user_placeholder_id';
+      const result = await getSetlists(userId);
+      if (result.success && result.setlists && result.setlists.length > 0) {
+        setInitialSetlist(result.setlists[0]);
+      }
+    };
+    fetchLastSetlist();
+  }, []);
+  
   const handleSongSelected = useCallback((songId: string) => {
       if (songId === activeSongId) return;
       stopAllTracks();
@@ -229,12 +212,14 @@ const DawPageContent = () => {
             trackNodesRef.current = {};
             
             const tracksForSong = tracks.filter(t => t.songId === activeSongId);
-            if(tracksForSong.length === 0) return;
+            if(tracksForSong.length === 0) {
+              setDuration(0);
+              return;
+            }
             
             const newLoadingSet = new Set<string>();
             tracksForSong.forEach(t => newLoadingSet.add(t.id));
             setLoadingTracks(newLoadingSet);
-            startTimer();
 
             const loadPromises = tracksForSong.map(async (track) => {
               try {
@@ -282,7 +267,7 @@ const DawPageContent = () => {
 
         prepareAudioNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSongId, isOnline]);
+    }, [activeSongId]);
     
   useEffect(() => {
     if (loadingTracks.size === 0) {
@@ -290,15 +275,7 @@ const DawPageContent = () => {
       if (hasTracks) {
         const maxDuration = Math.max(0, ...Object.values(trackNodesRef.current).map(node => node.player.buffer.duration));
         setDuration(maxDuration);
-        setStatus('success');
-        stopTimer();
-      } else {
-        setDuration(0);
-        setStatus('idle');
-        stopTimer();
       }
-    } else {
-        setStatus('in-progress');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingTracks, activeSongId, songs]);
@@ -515,7 +492,6 @@ const DawPageContent = () => {
             masterVolume={masterVolume}
             onMasterVolumeChange={handleMasterVolumeChange}
             masterVuLevel={masterVuLevel}
-            isOnline={isOnline}
         />
       </div>
       
@@ -529,7 +505,6 @@ const DawPageContent = () => {
               eqBands={eqBands}
               onEqChange={handleEqChange}
               onReset={handleEqReset}
-              isOnline={isOnline}
             />
         </div>
         {activeSongId ? (
@@ -561,9 +536,8 @@ const DawPageContent = () => {
             onSetlistSelected={handleSetlistSelected}
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
-            isOnline={isOnline}
         />
-        <TonicPad isOnline={isOnline} />
+        <TonicPad />
       </div>
 
       <YouTubePlayerDialog
@@ -579,14 +553,6 @@ const DawPageContent = () => {
         lyrics={songLyrics}
       />
     </div>
-  );
-};
-
-const DawPage = () => {
-  return (
-    <B2ConnectionProvider>
-      <DawPageContent />
-    </B2ConnectionProvider>
   );
 };
 

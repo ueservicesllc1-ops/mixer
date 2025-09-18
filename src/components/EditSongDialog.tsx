@@ -47,12 +47,11 @@ interface EditSongDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSongUpdated: (updatedSong: Song) => void;
-  isOnline: boolean;
 }
 
 type AIOperation = 'transcribe' | 'sync';
 
-const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, onSongUpdated, isOnline }) => {
+const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, onSongUpdated }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState<AIOperation | null>(null);
   const [alertInfo, setAlertInfo] = useState<{ open: boolean, operation: AIOperation | null, title: string, description: string, actionText: string } | null>(null);
@@ -84,14 +83,6 @@ const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, 
 
 
   async function onSubmit(data: EditSongFormValues) {
-    if (!isOnline) {
-      toast({
-        variant: 'destructive',
-        title: 'Modo Offline',
-        description: 'No se pueden guardar cambios sin conexión.',
-      });
-      return;
-    }
     setIsSaving(true);
     try {
       const updateData: SongUpdateData = {
@@ -126,23 +117,15 @@ const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, 
   }
 
   const handleAIOperationClick = (operation: AIOperation) => {
-    if (!isOnline) {
-      toast({
-        variant: 'destructive',
-        title: 'Modo Offline',
-        description: 'Las funciones de IA requieren conexión a internet.',
-      });
-      return;
-    }
     const dialogs = {
       transcribe: {
         title: 'Transcribir letra con IA',
-        description: `Para transcribir, necesitas subir el archivo de audio (MP3, WAV, etc.) de la canción completa. La IA generará la letra y la pondrá en el campo de texto.\n\n<span class="font-bold text-foreground">Importante:</span> El audio no se guardará, solo se usará para el análisis.`,
+        description: `Para transcribir, necesitas subir el archivo de audio (MP3, WAV, etc.) de la canción completa. La IA generará la letra y la pondrá en el campo de texto.<br/><br/><span class="font-bold text-foreground">Importante:</span> El audio no se guardará, solo se usará para el análisis.`,
         actionText: 'Seleccionar Archivo para Transcribir'
       },
       sync: {
         title: 'Sincronizar tiempos con IA',
-        description: `La IA analizará la letra en el campo de texto y la sincronizará con el audio que subas. Esto creará los tiempos para el modo karaoke.\n\n<span class="font-bold text-foreground">Importante:</span> El audio no se guardará, solo se usará para el análisis.`,
+        description: `La IA analizará la letra en el campo de texto y la sincronizará con el audio que subas. Esto creará los tiempos para el modo karaoke.<br/><br/><span class="font-bold text-foreground">Importante:</span> El audio no se guardará, solo se usará para el análisis.`,
         actionText: 'Seleccionar Archivo para Sincronizar'
       }
     };
@@ -239,7 +222,7 @@ const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, 
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleAIOperationClick('transcribe')}
-                                        disabled={!!isProcessingAI || !isOnline}
+                                        disabled={!!isProcessingAI}
                                         className="gap-2"
                                     >
                                         {isProcessingAI === 'transcribe' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
@@ -251,7 +234,7 @@ const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, 
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleAIOperationClick('sync')}
-                                    disabled={!hasLyrics || !!isProcessingAI || !isOnline}
+                                    disabled={!hasLyrics || !!isProcessingAI}
                                     className="gap-2"
                                 >
                                     {isProcessingAI === 'sync' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
@@ -291,7 +274,7 @@ const EditSongDialog: React.FC<EditSongDialogProps> = ({ song, isOpen, onClose, 
               </ScrollArea>
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-                <Button type="submit" disabled={isSaving || !!isProcessingAI || !isOnline}>
+                <Button type="submit" disabled={isSaving || !!isProcessingAI}>
                   {(isSaving || isProcessingAI) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {isSaving ? 'Guardando...' : (isProcessingAI ? 'Procesando IA...' : 'Guardar Cambios')}
                 </Button>

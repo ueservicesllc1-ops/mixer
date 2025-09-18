@@ -31,7 +31,6 @@ import { ScrollArea } from './ui/scroll-area';
 import { saveSong, NewSong, TrackFile } from '@/actions/songs';
 import { Progress } from './ui/progress';
 import { Textarea } from './ui/textarea';
-import { useB2Connection } from '@/contexts/B2ConnectionContext';
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
 const ACCEPTED_MIME_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/aac', 'audio/mp3'];
@@ -67,19 +66,17 @@ type SongFormValues = z.infer<typeof songFormSchema>;
 
 interface UploadSongDialogProps {
   onUploadFinished: () => void;
-  isOnline: boolean;
 }
 
 type TrackStatus = 'pending' | 'uploading' | 'success' | 'error';
 
-const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, isOnline }) => {
+const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished }) => {
   const [open, setOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
   const [trackErrorMessages, setTrackErrorMessages] = useState<Record<number, string>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const { toast } = useToast();
-  const { setStatus, startTimer, stopTimer } = useB2Connection();
 
   const form = useForm<SongFormValues>({
     resolver: zodResolver(songFormSchema),
@@ -207,12 +204,7 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
   }
 
   async function onSubmit(data: SongFormValues) {
-    if (!isOnline) {
-        toast({ variant: 'destructive', title: 'Modo Offline', description: 'No se pueden subir canciones nuevas sin conexión a internet.'});
-        return;
-    }
     setIsUploading(true);
-    startTimer();
     const uploadedTracks: TrackFile[] = [];
     for (let i = 0; i < data.tracks.length; i++) {
         const track = data.tracks[i];
@@ -229,15 +221,12 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
         } catch (error) {
             setTrackStatuses(prev => ({ ...prev, [i]: 'error' }));
             setTrackErrorMessages(prev => ({ ...prev, [i]: (error as Error).message }));
-            setStatus('error');
         }
     }
 
     if (uploadedTracks.length === 0) {
         toast({ variant: 'destructive', title: 'Subida fallida', description: 'Ninguna de las pistas pudo ser subida.' });
         setIsUploading(false);
-        stopTimer();
-        setStatus('error');
         return;
     }
     if (uploadedTracks.length < data.tracks.length) {
@@ -253,14 +242,10 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
         const saveResult = await saveSong(songData);
         if (!saveResult.success || !saveResult.song) throw new Error(saveResult.error || 'No se pudo guardar la canción.');
         toast({ title: '¡Éxito!', description: `La canción "${saveResult.song.name}" ha sido guardada.` });
-        setStatus('success');
         setTimeout(() => { setOpen(false); onUploadFinished(); }, 1000);
     } catch (error) {
          toast({ variant: 'destructive', title: 'Error al guardar la canción', description: (error as Error).message });
-         setStatus('error');
          setIsUploading(false);
-    } finally {
-      stopTimer();
     }
   }
   
@@ -278,7 +263,7 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetComponentState(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2" disabled={!isOnline} title={!isOnline ? "Necesitas conexión para subir canciones" : ""}>
+        <Button variant="outline" size="sm" className="gap-2">
             <Upload className="w-4 h-4" />
             Subir Canción
         </Button>
