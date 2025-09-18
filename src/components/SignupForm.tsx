@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2 } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, runTransaction } from 'firebase/firestore';
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="24px" height="24px" {...props}>
@@ -28,6 +28,7 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const signupFormSchema = z
   .object({
+    name: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
     email: z.string().email({ message: 'Por favor, introduce un correo electrónico válido.' }),
     password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
     confirmPassword: z.string(),
@@ -46,24 +47,47 @@ export default function SignupForm() {
   
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupFormSchema),
-    defaultValues: { email: '', password: '', confirmPassword: '' },
+    defaultValues: { name: '', email: '', password: '', confirmPassword: '' },
   });
 
   async function onSubmit(data: SignupFormValues) {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      
       const user = userCredential.user;
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.email, // Default display name
-        photoURL: null,
-        createdAt: new Date().toISOString(),
+      
+      // Actualizar el perfil de Firebase Auth con el nombre
+      await updateProfile(user, { displayName: data.name });
+
+      // Generar shortId y guardar en Firestore usando una transacción
+      const counterRef = doc(db, 'counters', 'users');
+      const userRef = doc(db, 'users', user.uid);
+      
+      await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let newCount = 1;
+        if (counterDoc.exists()) {
+          newCount = counterDoc.data().count + 1;
+        }
+
+        const initial = data.name.charAt(0).toUpperCase();
+        const paddedCount = String(newCount).padStart(4, '0');
+        const shortId = `${initial}${paddedCount}`;
+        
+        const userData = {
+            uid: user.uid,
+            email: user.email,
+            displayName: data.name,
+            photoURL: user.photoURL,
+            createdAt: new Date().toISOString(),
+            shortId: shortId
+        };
+        
+        transaction.set(counterRef, { count: newCount });
+        transaction.set(userRef, userData);
       });
 
-      toast({ title: '¡Registro exitoso!', description: 'Ahora puedes iniciar sesión.' });
+      toast({ title: '¡Registro exitoso!', description: 'Tu cuenta ha sido creada.' });
       // La redirección se gestiona en AuthContext
     } catch (error: any) {
       let errorMessage = 'Ocurrió un error inesperado. Por favor, inténtalo de nuevo.';
@@ -84,7 +108,7 @@ export default function SignupForm() {
     <Card className="w-full max-w-sm">
       <CardHeader>
         <CardTitle className="text-2xl">Crear una Cuenta</CardTitle>
-        <CardDescription>Ingresa tu correo para crear una cuenta nueva.</CardDescription>
+        <CardDescription>Ingresa tus datos para crear una cuenta nueva.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <Button variant="outline" className="w-full gap-2" onClick={signInWithGoogle} disabled={isLoading}>
@@ -101,6 +125,19 @@ export default function SignupForm() {
         </div>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Tu nombre" {...field} disabled={isLoading} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="email"

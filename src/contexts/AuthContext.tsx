@@ -6,7 +6,7 @@ import { onAuthStateChanged, User, signOut as firebaseSignOut, GoogleAuthProvide
 import { auth, db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, runTransaction } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -24,19 +24,61 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const generateAndAssignShortId = async (user: User): Promise<string | null> => {
+    const userRef = doc(db, 'users', user.uid);
+    const userSnap = await getDoc(userRef);
+
+    // Si el usuario ya existe y tiene un shortId, no hacemos nada.
+    if (userSnap.exists() && userSnap.data().shortId) {
+        return userSnap.data().shortId;
+    }
+
+    const counterRef = doc(db, 'counters', 'users');
+    let newShortId = '';
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const counterDoc = await transaction.get(counterRef);
+            let newCount;
+            if (!counterDoc.exists()) {
+                newCount = 1;
+            } else {
+                newCount = counterDoc.data().count + 1;
+            }
+
+            const initial = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
+            const paddedCount = String(newCount).padStart(4, '0');
+            newShortId = `${initial}${paddedCount}`;
+
+            // Actualizar el contador
+            transaction.set(counterRef, { count: newCount });
+
+            // Crear o actualizar el documento del usuario con el nuevo shortId
+            const userData = {
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                createdAt: userSnap.exists() ? userSnap.data().createdAt : new Date().toISOString(),
+                shortId: newShortId,
+            };
+            transaction.set(userRef, userData, { merge: true });
+        });
+        console.log(`Assigned shortId ${newShortId} to user ${user.uid}`);
+        return newShortId;
+    } catch (e) {
+        console.error("Transaction failed: ", e);
+        return null;
+    }
+};
+
+
 const saveUserToFirestore = async (user: User) => {
     const userRef = doc(db, 'users', user.uid);
     const docSnap = await getDoc(userRef);
 
-    if (!docSnap.exists()) {
-        const userData = {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            createdAt: new Date().toISOString(),
-        };
-        await setDoc(userRef, userData);
+    if (!docSnap.exists() || !docSnap.data().shortId) {
+       await generateAndAssignShortId(user);
     }
 };
 
