@@ -188,7 +188,8 @@ const DawPage = () => {
     } else {
       handleSongSelected('');
     }
-  }, [initialSetlist, handleSongSelected, activeSongId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSetlist]);
 
   useEffect(() => {
         const prepareAudioNodes = async () => {
