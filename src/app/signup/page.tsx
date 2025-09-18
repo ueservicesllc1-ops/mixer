@@ -4,10 +4,10 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import LoginForm from '@/components/LoginForm';
+import SignupForm from '@/components/SignupForm';
 import { Loader2 } from 'lucide-react';
 
-export default function LoginPage() {
+export default function SignupPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -27,7 +27,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-background">
-      <LoginForm />
+      <SignupForm />
     </main>
   );
 }

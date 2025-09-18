@@ -1,0 +1,582 @@
+
+'use client';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Header from '@/components/Header';
+import MixerGrid from '@/components/MixerGrid';
+import SongList from '@/components/SongList';
+import TonicPad from '@/components/TonicPad';
+import { getSetlists, Setlist, SetlistSong } from '@/actions/setlists';
+import { Song } from '@/actions/songs';
+import { SongStructure } from '@/ai/flows/song-structure';
+import LyricsDisplay from '@/components/LyricsDisplay';
+import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
+import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
+import TeleprompterDialog from '@/components/TeleprompterDialog';
+import { useToast } from '@/components/ui/use-toast';
+import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
+
+const eqFrequencies = [60, 250, 1000, 4000, 8000];
+const MAX_EQ_GAIN = 12;
+
+type ToneModule = typeof import('tone');
+type TrackNodes = Record<string, {
+    player: import('tone').Player;
+    panner: import('tone').Panner;
+    pitchShift: import('tone').PitchShift;
+    volume: import('tone').Volume;
+    waveform: import('tone').Waveform;
+}>;
+
+
+const DawPage = () => {
+  const [tracks, setTracks] = useState<SetlistSong[]>([]);
+  const [soloTracks, setSoloTracks] = useState<string[]>([]);
+  const [mutedTracks, setMutedTracks] = useState<string[]>([]);
+  const [initialSetlist, setInitialSetlist] = useState<Setlist | null>(null);
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [songStructure, setSongStructure] = useState<SongStructure | null>(null);
+  const [songLyrics, setSongLyrics] = useState<string | null>(null);
+  const [songSyncedLyrics, setSongSyncedLyrics] = useState<LyricsSyncOutput | null>(null);
+  const [songYoutubeUrl, setSongYoutubeUrl] = useState<string | null>(null);
+  const [songSyncOffset, setSongSyncOffset] = useState<number>(0);
+  const [duration, setDuration] = useState(0);
+
+  const activeSong = useMemo(() => songs.find(s => s.id === activeSongId), [songs, activeSongId]);
+  const audioContextStarted = useRef(false);
+  const trackNodesRef = useRef<TrackNodes>({});
+  
+  const toneRef = useRef<ToneModule | null>(null);
+  const eqNodesRef = useRef<import('tone').Filter[]>([]);
+  const masterMeterRef = useRef<import('tone').Meter | null>(null);
+  const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPreparingPlay, setIsPreparingPlay] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [pitch, setPitch] = useState(0);
+  const [masterVolume, setMasterVolume] = useState(100);
+
+  const [volumes, setVolumes] = useState<{ [key: string]: number }>({});
+  const [vuLevels, setVuLevels] = useState<Record<string, number>>({});
+  const [masterVuLevel, setMasterVuLevel] = useState(-Infinity);
+  const [eqBands, setEqBands] = useState([50, 50, 50, 50, 50]);
+  const [fadeOutDuration, setFadeOutDuration] = useState(0.5);
+  const [isPanVisible, setIsPanVisible] = useState(false);
+  
+  const [isYouTubePlayerOpen, setIsYouTubePlayerOpen] = useState(false);
+  const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
+
+  const { toast } = useToast();
+  
+  // State for local track names
+  const [localTrackNames, setLocalTrackNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const storedNames = localStorage.getItem('localTrackNames');
+      if (storedNames) {
+        setLocalTrackNames(JSON.parse(storedNames));
+      }
+    } catch (error) {
+      console.error("Failed to load local track names from localStorage", error);
+    }
+  }, []);
+
+  const handleTrackNameChange = (trackId: string, newName: string) => {
+    const newLocalNames = { ...localTrackNames, [trackId]: newName };
+    setLocalTrackNames(newLocalNames);
+    try {
+      localStorage.setItem('localTrackNames', JSON.stringify(newLocalNames));
+    } catch (error) {
+      console.error("Failed to save local track names to localStorage", error);
+    }
+  };
+
+
+  const initAudio = useCallback(async () => {
+    if (!toneRef.current) {
+        const Tone = await import('tone');
+        toneRef.current = Tone;
+    }
+    if (!audioContextStarted.current && toneRef.current) {
+        await toneRef.current.start();
+        audioContextStarted.current = true;
+        console.log("Audio context started with Tone.js");
+
+        if (eqNodesRef.current.length === 0) {
+            const Tone = toneRef.current;
+            const eqChain = eqFrequencies.map((freq) => {
+                return new Tone.Filter(freq, 'peaking', { Q: 1.5 });
+            });
+            const masterVol = new Tone.Volume();
+            const masterMeter = new Tone.Meter();
+            
+            Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
+            
+            eqNodesRef.current = eqChain;
+            masterVolumeNodeRef.current = masterVol;
+            masterMeterRef.current = masterMeter;
+        }
+    }
+  }, []);
+
+  useEffect(() => {
+    initAudio();
+  }, [initAudio]);
+
+  useEffect(() => {
+    const Tone = toneRef.current;
+    if (!Tone || !masterVolumeNodeRef.current) return;
+    const newDb = masterVolume > 0 ? (masterVolume / 100) * 40 - 40 : -Infinity;
+    masterVolumeNodeRef.current.volume.value = newDb;
+  }, [masterVolume]);
+
+  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
+
+  useEffect(() => {
+    if (!toneRef.current || eqNodesRef.current.length === 0) return;
+    eqNodesRef.current.forEach((filter, i) => {
+      const gainValue = (eqBands[i] / 100) * (MAX_EQ_GAIN * 2) - MAX_EQ_GAIN;
+      filter.gain.value = gainValue;
+    });
+  }, [eqBands]);
+
+  const activeTracks = useMemo(() => {
+    const getPrio = (trackName: string) => {
+      const upperCaseName = trackName.trim().toUpperCase();
+      if (upperCaseName === 'CLICK') return 1;
+      if (upperCaseName === 'CUES') return 2;
+      return 3;
+    };
+    return tracks
+      .filter(t => t.songId === activeSongId)
+      .sort((a, b) => {
+          const prioA = getPrio(a.name);
+          const prioB = getPrio(b.name);
+          if (prioA !== prioB) return prioA - prioB;
+          return a.name.localeCompare(b.name);
+      });
+  }, [tracks, activeSongId]);
+
+
+  const activeTracksRef = useRef(activeTracks);
+  useEffect(() => {
+      activeTracksRef.current = activeTracks;
+  }, [activeTracks]);
+
+  const stopAllTracks = useCallback(() => {
+    const Tone = toneRef.current;
+    if (!Tone) return;
+    Tone.Transport.stop();
+    Object.values(trackNodesRef.current).forEach(node => {
+      if (node.player.state === 'started') node.player.stop();
+      node.player.unsync();
+    });
+    setIsPlaying(false);
+    setCurrentTime(0);
+  }, []);
+
+  useEffect(() => {
+    const fetchLastSetlist = async () => {
+      const userId = 'user_placeholder_id';
+      const result = await getSetlists(userId);
+      if (result.success && result.setlists && result.setlists.length > 0) {
+        setInitialSetlist(result.setlists[0]);
+      }
+    };
+    fetchLastSetlist();
+  }, []);
+  
+  const handleSongSelected = useCallback((songId: string) => {
+      if (songId === activeSongId) return;
+      stopAllTracks();
+      setActiveSongId(songId);
+      setPlaybackRate(1);
+      setPitch(0);
+      setDuration(0);
+  }, [activeSongId, stopAllTracks]);
+
+  useEffect(() => {
+    if (initialSetlist && initialSetlist.songs) {
+        setTracks(initialSetlist.songs);
+        if (initialSetlist.songs.length > 0 && !activeSongId) {
+            const firstSongId = initialSetlist.songs[0].songId;
+            if (firstSongId) {
+                // No llamar a handleSongSelected directamente para evitar bucles.
+                // Simplemente establecemos el ID. El resto de efectos reaccionarán.
+                setActiveSongId(firstSongId);
+            }
+        }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSetlist]);
+
+  useEffect(() => {
+        const prepareAudioNodes = async () => {
+            if (!activeSongId) {
+                stopAllTracks();
+                setDuration(0);
+                return;
+            }
+
+            await initAudio();
+            const Tone = toneRef.current;
+            if (!Tone || eqNodesRef.current.length === 0) return;
+
+            Object.values(trackNodesRef.current).forEach(node => {
+                node.player.dispose();
+                node.panner.dispose();
+                node.pitchShift.dispose();
+                node.volume.dispose();
+                node.waveform.dispose();
+            });
+            trackNodesRef.current = {};
+            
+            const tracksForSong = tracks.filter(t => t.songId === activeSongId);
+            if(tracksForSong.length === 0) {
+              setDuration(0);
+              return;
+            }
+            
+            let maxDuration = 0;
+            const loadPromises = tracksForSong.map(async (track) => {
+                try {
+                    const cachedBuffer = await getCachedArrayBuffer(track.fileKey);
+
+                    let buffer: AudioBuffer;
+                    if (cachedBuffer) {
+                        // Cache HIT: Decode ArrayBuffer to AudioBuffer
+                        buffer = await Tone.context.decodeAudioData(cachedBuffer);
+                    } else {
+                        // Cache MISS: Stream from URL, get AudioBuffer, then cache as ArrayBuffer
+                        const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                        const tempPlayer = new Tone.Player(streamingUrl);
+                        await tempPlayer.load(streamingUrl);
+                        buffer = tempPlayer.buffer.get()!;
+                        cacheArrayBuffer(track.fileKey, buffer.getChannelData(0).buffer).catch(err => {
+                            console.warn("Failed to cache track:", track.fileKey, err);
+                        });
+                        tempPlayer.dispose();
+                    }
+                    
+                    const player = new Tone.Player(buffer);
+                    player.loop = true;
+                    
+                    const playerDuration = player.buffer.duration;
+                    if (playerDuration > maxDuration) {
+                        maxDuration = playerDuration;
+                    }
+
+                    const volume = new Tone.Volume(0);
+                    const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                    const panner = new Tone.Panner(0);
+                    const waveform = new Tone.Waveform(256);
+                    
+                    player.chain(volume, panner, pitchShift, waveform);
+                    pitchShift.connect(eqNodesRef.current[0]);
+
+                    trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+
+                } catch (e) {
+                    console.error(`Error processing track ${track.name}:`, e);
+                    toast({
+                        variant: "destructive",
+                        title: 'Error de Carga de Pista',
+                        description: `No se pudo cargar la pista "${track.name}".`
+                    });
+                }
+            });
+
+            await Promise.allSettled(loadPromises);
+            setDuration(maxDuration);
+        };
+
+        prepareAudioNodes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSongId, tracks]);
+
+  useEffect(() => {
+    if (activeSongId) {
+        const currentSong = songs.find(s => s.id === activeSongId);
+        setSongStructure(currentSong?.structure || null);
+        setSongLyrics(currentSong?.lyrics || null);
+        setSongSyncedLyrics(currentSong?.syncedLyrics || null);
+        setSongYoutubeUrl(currentSong?.youtubeUrl || null);
+        setSongSyncOffset(currentSong?.syncOffset || 0);
+    } else {
+        setSongStructure(null);
+        setSongLyrics(null);
+        setSongSyncedLyrics(null);
+        setSongYoutubeUrl(null);
+        setSongSyncOffset(0);
+    }
+  }, [activeSongId, songs]);
+
+  useEffect(() => {
+    const newVolumes: { [key: string]: number } = {};
+    activeTracks.forEach(track => {
+      newVolumes[track.id] = volumes[track.id] ?? 100;
+    });
+    setVolumes(newVolumes);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTracks]);
+
+  useEffect(() => {
+    let animationFrameId: number;
+    const Tone = toneRef.current;
+    if (isPlaying && Tone) {
+        const update = () => {
+            setCurrentTime(Tone.Transport.seconds);
+            const newVuLevels: Record<string, number> = {};
+            activeTracksRef.current.forEach(track => {
+                const node = trackNodesRef.current[track.id];
+                if (node && node.waveform) {
+                    const values = node.waveform.getValue();
+                    let peak = 0;
+                    if (values instanceof Float32Array) {
+                        for (let i = 0; i < values.length; i++) {
+                            const absValue = Math.abs(values[i]);
+                            if (absValue > peak) peak = absValue;
+                        }
+                    }
+                    newVuLevels[track.id] = 20 * Math.log10(peak);
+                }
+            });
+            setVuLevels(newVuLevels);
+            if (masterMeterRef.current) setMasterVuLevel(masterMeterRef.current.getValue() as number);
+            animationFrameId = requestAnimationFrame(update);
+        };
+        update();
+    } else {
+        const decay = () => {
+            setVuLevels(prevLevels => {
+                const newLevels: Record<string, number> = {};
+                let hasActiveLevels = false;
+                for (const trackId in prevLevels) {
+                    const currentLevel = prevLevels[trackId];
+                    if (currentLevel > -60) {
+                        newLevels[trackId] = currentLevel - 2;
+                        hasActiveLevels = true;
+                    } else {
+                        newLevels[trackId] = -Infinity;
+                    }
+                }
+                if (hasActiveLevels) animationFrameId = requestAnimationFrame(decay);
+                return newLevels;
+            });
+            setMasterVuLevel(prev => prev > -60 ? prev - 2 : -Infinity);
+        };
+        decay();
+    }
+    return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
+}, [isPlaying]);
+
+  const getIsMuted = useCallback((trackId: string) => {
+    const isMuted = mutedTracks.includes(trackId);
+    const isSoloActive = soloTracks.length > 0;
+    const isThisTrackSolo = soloTracks.includes(trackId);
+    if (isMuted) return true;
+    if (isSoloActive) return !isThisTrackSolo;
+    return false;
+  }, [mutedTracks, soloTracks]);
+
+  useEffect(() => {
+    Object.keys(trackNodesRef.current).forEach(trackId => {
+        const node = trackNodesRef.current[trackId];
+        if (node?.volume) node.volume.mute = getIsMuted(trackId);
+        if (node?.pitchShift) node.pitchShift.pitch = pitch;
+    });
+  }, [mutedTracks, soloTracks, getIsMuted, pitch]);
+  
+   useEffect(() => {
+      const Tone = toneRef.current;
+      if (!Tone || !activeSong) return;
+
+      Object.values(trackNodesRef.current).forEach(({ player }) => {
+        if (player) player.playbackRate = playbackRate;
+      });
+      Tone.Transport.bpm.value = activeSong.tempo * playbackRate;
+  }, [playbackRate, activeSong]);
+
+  const handlePlay = useCallback(async () => {
+    const Tone = toneRef.current;
+    if (!Tone || !activeSongId) return;
+    
+    setIsPreparingPlay(true);
+    await initAudio();
+    if (Tone.context.state === 'suspended') await Tone.context.resume();
+    
+    try {
+        await Tone.loaded();
+        if (Tone.Transport.state !== 'started') {
+          Object.values(trackNodesRef.current).forEach(node => node.player?.unsync());
+          activeTracksRef.current.forEach(track => {
+              const trackNode = trackNodesRef.current[track.id];
+              if (trackNode && trackNode.player.loaded) {
+                  trackNode.player.sync().start(0);
+              }
+          });
+          Tone.Transport.start();
+          setIsPlaying(true);
+        }
+    } catch(err) {
+        console.error("Error during playback preparation:", err);
+        toast({ variant: "destructive", title: "Error de Reproducción", description: "No se pudieron cargar todas las pistas." });
+    } finally {
+        setIsPreparingPlay(false);
+    }
+  }, [activeSongId, initAudio, toast]);
+
+  const handlePause = useCallback(() => {
+    const Tone = toneRef.current;
+    if (!Tone) return;
+    Tone.Transport.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const handleMuteToggle = (trackId: string) => {
+    setMutedTracks(prev => prev.includes(trackId) ? prev.filter(id => id !== trackId) : [...prev, trackId]);
+    if (!mutedTracks.includes(trackId)) setSoloTracks(prev => prev.filter(id => id !== trackId));
+  };
+
+  const handleSoloToggle = (trackId: string) => {
+    setSoloTracks(prev => prev.includes(trackId) ? prev.filter(id => id !== trackId) : [...prev, trackId]);
+  };
+  
+  const handleSetlistSelected = (setlist: Setlist | null) => {
+    setInitialSetlist(setlist);
+    if (!setlist) {
+        stopAllTracks();
+        setTracks([]);
+        setActiveSongId(null);
+    }
+  };
+  
+  const handleVolumeChange = useCallback((trackId: string, newVol: number) => {
+    setVolumes(prev => ({...prev, [trackId]: newVol}));
+    const node = trackNodesRef.current[trackId];
+    if (node && node.volume) {
+      const newDb = newVol > 0 ? (newVol / 100) * 40 - 40 : -Infinity;
+      node.volume.volume.value = newDb;
+    }
+  }, []);
+
+  const handleMasterVolumeChange = (newVol: number) => setMasterVolume(newVol);
+  
+  const handleEqChange = (bandIndex: number, newValue: number) => {
+    setEqBands(prevBands => {
+      const newBands = [...prevBands];
+      newBands[bandIndex] = newValue;
+      return newBands;
+    });
+  };
+
+  const handleBpmChange = (newBpm: number) => {
+      if (!activeSong || !activeSong.tempo) return;
+      const newRate = newBpm / activeSong.tempo;
+      setPlaybackRate(Math.max(0.5, Math.min(2, newRate)));
+  };
+  
+  const handleSeek = (newTime: number) => {
+    const Tone = toneRef.current;
+    if (!Tone || !activeSong) return;
+    Tone.Transport.seconds = newTime;
+    setCurrentTime(newTime);
+  };
+  
+
+  return (
+    <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
+      <div className="col-span-2 row-start-1">
+        <Header 
+            isPlaying={isPlaying}
+            isPreparingPlay={isPreparingPlay}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onStop={stopAllTracks}
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={handleSeek}
+            isReadyToPlay={!!activeSong}
+            fadeOutDuration={fadeOutDuration}
+            onFadeOutDurationChange={setFadeOutDuration}
+            isPanVisible={isPanVisible}
+            onPanVisibilityChange={setIsPanVisible}
+            activeSong={activeSong}
+            playbackRate={playbackRate}
+            onPlaybackRateChange={setPlaybackRate}
+            onBpmChange={handleBpmChange}
+            pitch={pitch}
+            onPitchChange={setPitch}
+            masterVolume={masterVolume}
+            onMasterVolumeChange={handleMasterVolumeChange}
+            masterVuLevel={masterVuLevel}
+        />
+      </div>
+      
+      <main className="col-start-1 row-start-2 overflow-y-auto pr-2 no-scrollbar flex flex-col gap-4">
+        <div className="h-28">
+            <LyricsDisplay 
+              lyrics={songLyrics}
+              youtubeUrl={songYoutubeUrl}
+              onOpenYouTube={() => setIsYouTubePlayerOpen(true)}
+              onOpenTeleprompter={() => setIsTeleprompterOpen(true)}
+              eqBands={eqBands}
+              onEqChange={handleEqChange}
+              onReset={handleEqReset}
+            />
+        </div>
+        {activeSongId ? (
+            <MixerGrid
+              tracks={activeTracks}
+              activeSong={activeSong}
+              soloTracks={soloTracks}
+              mutedTracks={mutedTracks}
+              volumes={volumes}
+              onMuteToggle={handleMuteToggle}
+              onSoloToggle={handleSoloToggle}
+              onVolumeChange={handleVolumeChange}
+              isPlaying={isPlaying}
+              vuLevels={vuLevels}
+              localTrackNames={localTrackNames}
+              onTrackNameChange={handleTrackNameChange}
+            />
+        ) : (
+          <div className="flex justify-center items-center h-full">
+            <div className="text-center text-muted-foreground">
+                <p className="mt-4">Selecciona o crea un setlist para empezar.</p>
+            </div>
+         </div>
+        )}
+      </main>
+
+       <div className="col-start-2 row-start-2 flex flex-col gap-4">
+        <SongList 
+            initialSetlist={initialSetlist}
+            activeSongId={activeSongId}
+            onSetlistSelected={handleSetlistSelected}
+            onSongSelected={handleSongSelected}
+            onSongsFetched={setSongs}
+        />
+        <TonicPad />
+      </div>
+
+      <YouTubePlayerDialog
+        isOpen={isYouTubePlayerOpen}
+        onClose={() => setIsYouTubePlayerOpen(false)}
+        videoUrl={songYoutubeUrl}
+        songTitle={activeSong?.name || 'Video de YouTube'}
+       />
+       <TeleprompterDialog
+        isOpen={isTeleprompterOpen}
+        onClose={() => setIsTeleprompterOpen(false)}
+        songTitle={activeSong?.name || 'Teleprompter'}
+        lyrics={songLyrics}
+      />
+    </div>
+  );
+};
+
+export default DawPage;
