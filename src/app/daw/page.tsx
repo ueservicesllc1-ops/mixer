@@ -249,21 +249,27 @@ const DawPage = () => {
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                    const isCached = await getCachedArrayBuffer(track.fileKey);
-                    
-                    const url = isCached 
-                        ? URL.createObjectURL(new Blob([isCached!])) 
-                        : `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                    let audioBuffer: AudioBuffer | null = null;
+                    const cachedData = await getCachedArrayBuffer(track.fileKey);
 
-                    const player = new Tone.Player(url, (p) => {
-                        // This callback runs after the player is loaded.
-                        const playerDuration = p.buffer.duration;
-                        if (playerDuration > maxDuration) {
-                            maxDuration = playerDuration;
-                            setDuration(maxDuration);
-                        }
-                    });
+                    if (cachedData) {
+                        audioBuffer = await Tone.context.decodeAudioData(cachedData.slice(0));
+                    } else {
+                        const response = await fetch(`/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`);
+                        if (!response.ok) throw new Error(`Failed to download ${track.name}`);
+                        const arrayBuffer = await response.arrayBuffer();
+                        await cacheArrayBuffer(track.fileKey, arrayBuffer.slice(0));
+                        audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
+                    }
                     
+                    if (!audioBuffer) throw new Error(`Could not create audio buffer for ${track.name}`);
+
+                    const player = new Tone.Player(audioBuffer);
+                    const playerDuration = player.buffer.duration;
+                    if (playerDuration > maxDuration) {
+                        maxDuration = playerDuration;
+                        setDuration(maxDuration);
+                    }
                     player.loop = true;
 
                     const volume = new Tone.Volume(0);
@@ -272,6 +278,8 @@ const DawPage = () => {
                     const waveform = new Tone.Waveform(256);
                     
                     player.chain(volume, panner, pitchShift, waveform);
+                    
+                    // Correctly connect the end of the track chain to the master effects chain
                     pitchShift.connect(eqNodesRef.current[0]);
 
                     trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
@@ -482,12 +490,11 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
-  const handleSongCaching = () => {
+  const handleSongCaching = async () => {
     setIsCachingSong(true);
-    setTimeout(() => {
-        setIsCachingSong(false);
-    }, 5000); // Countdown duration
-  }
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Espera 5 segundos
+    setIsCachingSong(false);
+  };
 
   return (
     <>
@@ -587,3 +594,5 @@ const DawPage = () => {
 };
 
 export default DawPage;
+
+    
