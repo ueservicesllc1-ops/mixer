@@ -16,6 +16,7 @@ import VolumeSlider from './VolumeSlider';
 
 interface HeaderProps {
   isPlaying?: boolean;
+  isPreparingPlay?: boolean;
   onPlay?: () => void;
   onPause?: () => void;
   onStop?: () => void;
@@ -43,6 +44,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   isPlaying,
+  isPreparingPlay,
   onPlay,
   onPause,
   onStop,
@@ -152,14 +154,14 @@ const Header: React.FC<HeaderProps> = ({
 
         <div className="flex items-center justify-center gap-4">
             <div className="flex items-center gap-1 bg-background p-1 rounded-lg">
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onRewind} disabled={!isReadyToPlay}><Rewind className="w-6 h-6" /></Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onRewind} disabled={!isReadyToPlay || isPreparingPlay}><Rewind className="w-6 h-6" /></Button>
                 <div className="bg-white rounded-lg p-1">
-                    <Button variant="secondary" size="icon" className={cn("w-20 h-10 bg-white text-black hover:bg-neutral-200", !isReadyToPlay && "bg-neutral-300 text-neutral-500 cursor-not-allowed")} onClick={isPlaying ? onPause : onPlay} disabled={!isReadyToPlay}>
-                        {!isReadyToPlay ? <Loader2 className="w-8 h-8 animate-spin" /> : isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+                    <Button variant="secondary" size="icon" className={cn("w-20 h-10 bg-white text-black hover:bg-neutral-200", (!isReadyToPlay || isPreparingPlay) && "bg-neutral-300 text-neutral-500 cursor-not-allowed")} onClick={isPlaying ? onPause : onPlay} disabled={!isReadyToPlay || isPreparingPlay}>
+                        {isPreparingPlay ? <Loader2 className="w-8 h-8 animate-spin" /> : isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
                     </Button>
                 </div>
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onStop} disabled={!isReadyToPlay}><Square className="w-6 h-6" /></Button>
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onFastForward} disabled={!isReadyToPlay}><FastForward className="w-6 h-6" /></Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onStop} disabled={!isReadyToPlay || isPreparingPlay}><Square className="w-6 h-6" /></Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onFastForward} disabled={!isReadyToPlay || isPreparingPlay}><FastForward className="w-6 h-6" /></Button>
             </div>
         </div>
         

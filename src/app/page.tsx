@@ -51,6 +51,7 @@ const DawPage = () => {
   const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPreparingPlay, setIsPreparingPlay] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [pitch, setPitch] = useState(0);
@@ -176,7 +177,6 @@ const DawPage = () => {
       setTracks(initialSetlist.songs);
       if (initialSetlist.songs.length > 0) {
         const firstSongId = initialSetlist.songs[0].songId;
-        // Solo selecciona automáticamente si no hay una canción activa
         if (firstSongId && !activeSongId) {
             handleSongSelected(firstSongId);
         }
@@ -186,8 +186,7 @@ const DawPage = () => {
     } else {
       setActiveSongId('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSetlist]);
+  }, [initialSetlist, activeSongId, handleSongSelected]);
 
   useEffect(() => {
         const prepareAudioNodes = async () => {
@@ -266,7 +265,7 @@ const DawPage = () => {
 
         prepareAudioNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSongId]);
+    }, [activeSongId, tracks]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -363,34 +362,42 @@ const DawPage = () => {
   
    useEffect(() => {
       const Tone = toneRef.current;
-      if (!Tone || !activeSongId) return;
-      
-      const songToUse = songs.find(s => s.id === activeSongId);
-      if (!songToUse) return;
+      if (!Tone || !activeSong) return;
 
       Object.values(trackNodesRef.current).forEach(({ player }) => {
         if (player) player.playbackRate = playbackRate;
       });
-      Tone.Transport.bpm.value = songToUse.tempo * playbackRate;
-  }, [playbackRate, activeSongId, songs]);
+      Tone.Transport.bpm.value = activeSong.tempo * playbackRate;
+  }, [playbackRate, activeSong]);
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
     if (!Tone || !activeSongId) return;
+    
+    setIsPreparingPlay(true);
     await initAudio();
     if (Tone.context.state === 'suspended') await Tone.context.resume();
-    if (Tone.Transport.state !== 'started') {
-      Object.values(trackNodesRef.current).forEach(node => node.player?.unsync());
-      activeTracksRef.current.forEach(track => {
-          const trackNode = trackNodesRef.current[track.id];
-          if (trackNode) {
-              trackNode.player.sync().start(0);
-          }
-      });
-      Tone.Transport.start();
-      setIsPlaying(true);
+    
+    try {
+        await Tone.loaded();
+        if (Tone.Transport.state !== 'started') {
+          Object.values(trackNodesRef.current).forEach(node => node.player?.unsync());
+          activeTracksRef.current.forEach(track => {
+              const trackNode = trackNodesRef.current[track.id];
+              if (trackNode && trackNode.player.loaded) {
+                  trackNode.player.sync().start(0);
+              }
+          });
+          Tone.Transport.start();
+          setIsPlaying(true);
+        }
+    } catch(err) {
+        console.error("Error during playback preparation:", err);
+        toast({ variant: "destructive", title: "Error de Reproducción", description: "No se pudieron cargar todas las pistas." });
+    } finally {
+        setIsPreparingPlay(false);
     }
-  }, [activeSongId, initAudio]);
+  }, [activeSongId, initAudio, toast]);
 
   const handlePause = useCallback(() => {
     const Tone = toneRef.current;
@@ -455,6 +462,7 @@ const DawPage = () => {
       <div className="col-span-2 row-start-1">
         <Header 
             isPlaying={isPlaying}
+            isPreparingPlay={isPreparingPlay}
             onPlay={handlePlay}
             onPause={handlePause}
             onStop={stopAllTracks}
