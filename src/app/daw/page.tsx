@@ -14,6 +14,7 @@ import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
 import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
+import { useAuth } from '@/contexts/AuthContext';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -29,6 +30,7 @@ type TrackNodes = Record<string, {
 
 
 const DawPage = () => {
+  const { user } = useAuth();
   const [tracks, setTracks] = useState<SetlistSong[]>([]);
   const [soloTracks, setSoloTracks] = useState<string[]>([]);
   const [mutedTracks, setMutedTracks] = useState<string[]>([]);
@@ -180,14 +182,16 @@ const DawPage = () => {
 
   useEffect(() => {
     const fetchLastSetlist = async () => {
-      const userId = 'user_placeholder_id';
+      const userId = user?.uid ?? 'user_placeholder_id';
       const result = await getSetlists(userId);
       if (result.success && result.setlists && result.setlists.length > 0) {
         setInitialSetlist(result.setlists[0]);
       }
     };
-    fetchLastSetlist();
-  }, []);
+    if (user) {
+        fetchLastSetlist();
+    }
+  }, [user]);
   
   const handleSongSelected = useCallback((songId: string) => {
       if (songId === activeSongId) return;
@@ -513,6 +517,7 @@ const DawPage = () => {
             masterVolume={masterVolume}
             onMasterVolumeChange={handleMasterVolumeChange}
             masterVuLevel={masterVuLevel}
+            user={user}
         />
       </div>
       
