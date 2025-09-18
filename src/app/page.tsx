@@ -314,8 +314,7 @@ const DawPage = () => {
         };
 
         loadAudioData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSongId, isOnline, pitch, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast]);
+    }, [activeSongId, isOnline, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast, pitch, songs, tracks]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -334,7 +333,6 @@ const DawPage = () => {
       newVolumes[track.id] = volumes[track.id] ?? 100;
     });
     setVolumes(newVolumes);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTracks]);
 
   useEffect(() => {
