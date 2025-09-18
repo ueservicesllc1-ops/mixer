@@ -12,10 +12,12 @@ import EditSongDialog from '@/components/EditSongDialog';
 import Link from 'next/link';
 import UploadSongForm from '@/components/UploadSongForm';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 type AdminView = 'library' | 'upload';
 
 const AdminPage = () => {
+  const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(true);
   const [songsError, setSongsError] = useState<string | null>(null);
@@ -27,10 +29,11 @@ const AdminPage = () => {
   const { toast } = useToast();
 
   const handleFetchSongs = async (selectLibraryView: boolean = false) => {
+    if (!user) return;
     setIsLoadingSongs(true);
     setSongsError(null);
     try {
-      const result = await getSongs();
+      const result = await getSongs(user.uid);
       if (result.success && result.songs) {
         setSongs(result.songs);
       } else {
@@ -47,8 +50,10 @@ const AdminPage = () => {
   };
 
   useEffect(() => {
-    handleFetchSongs();
-  }, []);
+    if (user) {
+        handleFetchSongs();
+    }
+  }, [user]);
 
   const handleSongUpdated = (updatedSong: Song) => {
     setSongs(prevSongs => prevSongs.map(s => s.id === updatedSong.id ? updatedSong : s));
@@ -155,6 +160,14 @@ const AdminPage = () => {
     }
     return <p className="text-muted-foreground text-center py-10">No hay canciones en la biblioteca.</p>;
   };
+
+  if (!user) {
+    return (
+        <div className="flex h-screen w-screen items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    );
+  }
 
   return (
     <>

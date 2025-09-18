@@ -23,6 +23,7 @@ import { saveSong, NewSong, TrackFile } from '@/actions/songs';
 import { Progress } from './ui/progress';
 import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
 const ACCEPTED_MIME_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/aac', 'audio/mp3'];
@@ -63,6 +64,7 @@ interface UploadSongFormProps {
 type TrackStatus = 'pending' | 'uploading' | 'success' | 'error';
 
 const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => {
+  const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
   const [trackErrorMessages, setTrackErrorMessages] = useState<Record<number, string>>({});
@@ -192,6 +194,10 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   }
 
   async function onSubmit(data: SongFormValues) {
+    if (!user) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Debes iniciar sesión para subir una canción.' });
+      return;
+    }
     setIsUploading(true);
     const uploadedTracks: TrackFile[] = [];
     for (let i = 0; i < data.tracks.length; i++) {
@@ -226,6 +232,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
           name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
           timeSignature: data.timeSignature, albumImageUrl: data.albumImageUrl,
           lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: uploadedTracks,
+          userId: user.uid,
         };
         const saveResult = await saveSong(songData);
         if (!saveResult.success || !saveResult.song) throw new Error(saveResult.error || 'No se pudo guardar la canción.');

@@ -1,7 +1,8 @@
+
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, deleteDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, deleteDoc, updateDoc, getDoc, where } from 'firebase/firestore';
 import { analyzeSongStructure, SongStructure, AnalyzeSongStructureInput } from '@/ai/flows/song-structure';
 import { synchronizeLyricsFlow, LyricsSyncInput, LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import { transcribeLyricsFlow, TranscribeLyricsInput } from '@/ai/flows/transcribe-lyrics';
@@ -21,9 +22,10 @@ export interface NewSong {
   name: string;
   artist: string;
   tempo: number;
-  key: string;
+  key:string;
   timeSignature: string;
   tracks: TrackFile[];
+  userId: string;
   albumImageUrl?: string;
   lyrics?: string;
   youtubeUrl?: string;
@@ -180,10 +182,10 @@ export async function reanalyzeSongStructure(songId: string, input: AnalyzeSongS
 }
 
 
-export async function getSongs() {
+export async function getSongs(userId: string) {
     try {
         const songsCollection = collection(db, 'songs');
-        const q = query(songsCollection, orderBy('createdAt', 'desc'));
+        const q = query(songsCollection, where('userId', '==', userId), orderBy('createdAt', 'desc'));
         const songsSnapshot = await getDocs(q);
         
         const songs: Song[] = songsSnapshot.docs.map(doc => {
@@ -200,6 +202,7 @@ export async function getSongs() {
                 key: data.key,
                 timeSignature: data.timeSignature,
                 tracks: data.tracks || [],
+                userId: data.userId,
                 structure: data.structure,
                 albumImageUrl: data.albumImageUrl,
                 lyrics: data.lyrics,

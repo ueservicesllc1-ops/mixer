@@ -152,10 +152,11 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   }, [initialSetlist]);
 
   const handleFetchSongs = async () => {
+    if (!user) return;
     setIsLoadingSongs(true);
     setSongsError(null);
     try {
-      const result = await getSongs();
+      const result = await getSongs(user.uid);
       if (result.success && result.songs) {
         setSongs(result.songs);
         onSongsFetched(result.songs); // Notificar al padre sobre las canciones
@@ -171,9 +172,11 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   
   // Cargar canciones al montar el componente
   useEffect(() => {
-    handleFetchSongs();
+    if (user) {
+        handleFetchSongs();
+    }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   const handleFetchSetlists = async () => {
     if (!user) return;
@@ -608,7 +611,9 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       </div>
         <div className="pt-3 mt-auto border-t border-border/50 flex justify-between items-center">
             <Button variant="ghost" size="sm" className="text-muted-foreground gap-2" onClick={() => {
-              handleFetchSongs();
+              if (user) {
+                handleFetchSongs();
+              }
               setIsLibrarySheetOpen(true);
             }}>
                 <PlusCircle className="w-4 h-4" />
@@ -635,5 +640,3 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 };
 
 export default SongList;
-
-    
