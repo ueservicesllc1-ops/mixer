@@ -50,6 +50,8 @@ const DawPage = () => {
   const toneRef = useRef<ToneModule | null>(null);
   const eqNodesRef = useRef<import('tone').Filter[]>([]);
   const masterMeterRef = useRef<import('tone').Meter | null>(null);
+  const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
+
 
   const [loadingTracks, setLoadingTracks] = useState(new Set<string>());
   const [loadedTracksCount, setLoadedTracksCount] = useState(0);
@@ -111,17 +113,15 @@ const DawPage = () => {
             });
 
             masterMeterRef.current = new Tone.Meter();
-            // This is the master volume node that the slider will control
-            const masterVol = Tone.Destination;
+            masterVolumeNodeRef.current = new Tone.Volume().toDestination();
             
             if (eqChain.length > 0) {
-              // Connect the EQ chain to the master volume node
-              Tone.connectSeries(...eqChain, masterVol);
+              Tone.connectSeries(...eqChain, masterVolumeNodeRef.current);
+            } else {
+              masterVolumeNodeRef.current.toDestination();
             }
             
-            // Connect the master volume to the meter, and the meter to the actual output
-            masterVol.connect(masterMeterRef.current);
-
+            masterVolumeNodeRef.current.connect(masterMeterRef.current);
             eqNodesRef.current = eqChain;
         }
     }
@@ -133,10 +133,10 @@ const DawPage = () => {
 
   useEffect(() => {
     const Tone = toneRef.current;
-    if (!Tone) return;
+    if (!Tone || !masterVolumeNodeRef.current) return;
 
     const newDb = masterVolume > 0 ? (masterVolume / 100) * 40 - 40 : -Infinity;
-    Tone.Destination.volume.value = newDb;
+    masterVolumeNodeRef.current.volume.value = newDb;
 
   }, [masterVolume]);
 
@@ -179,6 +179,26 @@ const DawPage = () => {
     fetchLastSetlist();
   }, []);
 
+  const handleSongSelected = useCallback((songId: string) => {
+      if (songId === activeSongId) return;
+      // Stop everything before changing the song
+      const Tone = toneRef.current;
+      if (Tone) {
+          Tone.Transport.stop();
+          Object.values(trackNodesRef.current).forEach(node => {
+              if (node.player.state === 'started') node.player.stop();
+              node.player.unsync();
+          });
+      }
+      setIsPlaying(false);
+      setCurrentTime(0);
+
+      // Now set the new song
+      setActiveSongId(songId);
+      setPlaybackRate(1);
+      setPitch(0);
+  }, [activeSongId]);
+
   useEffect(() => {
     if (initialSetlist && initialSetlist.songs) {
       setTracks(initialSetlist.songs);
@@ -204,7 +224,7 @@ const DawPage = () => {
       setSongYoutubeUrl(null);
       setSongSyncOffset(0);
     }
-  }, [initialSetlist]);
+  }, [initialSetlist, handleSongSelected]);
 
   const stopAllTracks = useCallback(() => {
     const Tone = toneRef.current;
@@ -331,8 +351,7 @@ const DawPage = () => {
 
     loadAudioData();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId, activeSong, isOnline, tracks, songs]);
+   }, [activeSongId, songs, tracks, isOnline, initAudio, pitch, toast]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -524,13 +543,6 @@ const DawPage = () => {
     }
   };
   
-  const handleSongSelected = (songId: string) => {
-      if (songId === activeSongId) return;
-      stopAllTracks();
-      setActiveSongId(songId);
-      setPlaybackRate(1);
-      setPitch(0);
-  }
 
   const handleVolumeChange = useCallback((trackId: string, newVol: number) => {
     setVolumes(prev => ({...prev, [trackId]: newVol}));
@@ -677,5 +689,3 @@ const DawPage = () => {
 };
 
 export default DawPage;
-
-    
