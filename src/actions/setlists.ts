@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
 import type { Song } from './songs';
 
 export interface NewSetlist {
@@ -58,6 +58,25 @@ export async function saveSetlist(data: NewSetlist) {
     return { success: false, error: (error as Error).message };
   }
 }
+
+export async function updateSetlist(setlistId: string, data: { name: string; date: Date; }) {
+  try {
+    const setlistRef = doc(db, 'setlists', setlistId);
+    
+    // Convierte la fecha de JS a un Timestamp de Firestore para guardarla correctamente
+    const firestoreDate = Timestamp.fromDate(data.date);
+
+    await updateDoc(setlistRef, {
+      name: data.name,
+      date: firestoreDate,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error(`Error actualizando setlist ${setlistId}:`, error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
 
 export async function getSetlists(userId: string) {
     try {

@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -21,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cacheArrayBuffer, getCachedArrayBuffer } from '@/lib/audiocache';
+import EditSetlistDialog from './EditSetlistDialog';
 
 
 interface SongListProps {
@@ -46,6 +48,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [setlistsError, setSetlistsError] = useState<string | null>(null);
   
   const [selectedSetlist, setSelectedSetlist] = useState<Setlist | null>(null);
+  const [setlistToEdit, setSetlistToEdit] = useState<Setlist | null>(null);
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
@@ -108,6 +111,17 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     onSetlistSelected(setlist);
     setIsSetlistSheetOpen(false);
   }
+
+  const handleSetlistUpdated = () => {
+    handleFetchSetlists();
+    // También podría ser necesario actualizar el setlist activo si es el que se editó
+    if (setlistToEdit && selectedSetlist && setlistToEdit.id === selectedSetlist.id) {
+        // Refrescar el setlist activo. Esto es una simplificación, una mejor
+        // implementación podría devolver el setlist actualizado desde la acción.
+    }
+    setSetlistToEdit(null);
+  };
+
 
   const preCacheSongTracks = async (song: Song) => {
     setCachingSongs(prev => ({ ...prev, [song.id]: true }));
@@ -424,6 +438,15 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         </AlertDialogContent>
     </AlertDialog>
 
+    {setlistToEdit && (
+        <EditSetlistDialog
+            setlist={setlistToEdit}
+            isOpen={!!setlistToEdit}
+            onClose={() => setSetlistToEdit(null)}
+            onSetlistUpdated={handleSetlistUpdated}
+        />
+    )}
+
     <div className="bg-card/50 rounded-lg p-3 flex flex-col h-full">
       <div className="flex justify-between items-center mb-3">
         <h2 className="font-bold text-foreground">{selectedSetlist ? selectedSetlist.name : 'Nuevas betel'}</h2>
@@ -443,7 +466,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                     </SheetDescription>
                 </SheetHeader>
                 <div className="py-4 h-full flex flex-col">
-                    <div className="flex-grow space-y-2">
+                    <div className="flex-grow space-y-2 overflow-y-auto">
                     {isLoadingSetlists ? (
                         <div className="flex justify-center items-center h-full">
                           <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -454,16 +477,25 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                         setlists.map((setlist) => (
                         <div 
                           key={setlist.id} 
-                          className="flex flex-col p-3 rounded-md bg-black border border-amber-400/20 gap-1 cursor-pointer hover:bg-gray-900/50" 
-                          onClick={() => handleSetlistSelect(setlist)}
+                          className="flex items-center p-3 rounded-md bg-black border border-amber-400/20 gap-4 group" 
                         >
-                            <p className="font-mono font-bold text-lg text-amber-400 flex-grow [text-shadow:0_0_5px_theme(colors.amber.400)]">
-                              {setlist.name}
-                            </p>
-                            <div className="flex items-center gap-2 text-amber-400/60">
-                              <Calendar className="w-4 h-4" />
-                              <p className="text-xs font-mono">{format(new Date(setlist.date), 'dd/MM/yyyy')}</p>
+                            <div className="flex-grow cursor-pointer" onClick={() => handleSetlistSelect(setlist)}>
+                                <p className="font-mono font-bold text-lg text-amber-400 flex-grow [text-shadow:0_0_5px_theme(colors.amber.400)]">
+                                {setlist.name}
+                                </p>
+                                <div className="flex items-center gap-2 text-amber-400/60">
+                                <Calendar className="w-4 h-4" />
+                                <p className="text-xs font-mono">{format(new Date(setlist.date), 'dd/MM/yyyy')}</p>
+                                </div>
                             </div>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="w-9 h-9 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100"
+                                onClick={() => setSetlistToEdit(setlist)}
+                            >
+                                <Pencil className="w-4 h-4"/>
+                            </Button>
                         </div>
                         ))
                     ) : (
