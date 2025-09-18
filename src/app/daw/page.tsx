@@ -13,7 +13,7 @@ import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
-import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
+import { getB2FileAsDataURI } from '@/actions/download';
 import { useAuth } from '@/contexts/AuthContext';
 import JudithLoader from '@/components/JudithLoader';
 
@@ -249,22 +249,14 @@ const DawPage = () => {
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                    let audioBuffer: AudioBuffer | null = null;
-                    const cachedData = await getCachedArrayBuffer(track.fileKey);
-
-                    if (cachedData) {
-                        audioBuffer = await Tone.context.decodeAudioData(cachedData.slice(0));
-                    } else {
-                        const response = await fetch(`/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`);
-                        if (!response.ok) throw new Error(`Failed to download ${track.name}`);
-                        const arrayBuffer = await response.arrayBuffer();
-                        await cacheArrayBuffer(track.fileKey, arrayBuffer.slice(0));
-                        audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
+                    const downloadResult = await getB2FileAsDataURI(track.fileKey);
+                    if (!downloadResult.success || !downloadResult.dataUri) {
+                        throw new Error(downloadResult.error || `Failed to get data URI for ${track.name}`);
                     }
-                    
-                    if (!audioBuffer) throw new Error(`Could not create audio buffer for ${track.name}`);
 
-                    const player = new Tone.Player(audioBuffer);
+                    const player = new Tone.Player(downloadResult.dataUri);
+                    await Tone.loaded(); // Wait for the player to be ready
+                    
                     const playerDuration = player.buffer.duration;
                     if (playerDuration > maxDuration) {
                         maxDuration = playerDuration;

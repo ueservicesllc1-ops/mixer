@@ -21,7 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { cacheArrayBuffer, getCachedArrayBuffer } from '@/lib/audiocache';
 import EditSetlistDialog from './EditSetlistDialog';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -49,7 +48,7 @@ interface GroupedSong {
     tracks: SetlistSong[];
 }
 
-const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, cachingSongs: Record<string, 'caching' | 'cached'>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
+const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
 
     const style = {
@@ -58,7 +57,6 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
     };
     
     const fullSong = songs.find(s => s.id === songGroup.songId);
-    const isCaching = cachingSongs[songGroup.songId] === 'caching';
 
     return (
         <div 
@@ -101,21 +99,17 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
             <span className="justify-self-center text-muted-foreground font-mono text-[11px]">{fullSong?.tempo ?? '--'}</span>
 
             <div className="flex justify-center items-center">
-                {isCaching ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                ) : (
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="w-7 h-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                            e.stopPropagation(); 
-                            onRemove(songGroup.songId, songGroup.songName);
-                        }}
-                    >
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                )}
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="w-7 h-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                    onClick={(e) => {
+                        e.stopPropagation(); 
+                        onRemove(songGroup.songId, songGroup.songName);
+                    }}
+                >
+                    <Trash2 className="w-3.5 h-3.5" />
+                </Button>
             </div>
         </div>
     );
@@ -136,7 +130,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
-  const [cachingSongs, setCachingSongs] = useState<Record<string, 'caching' | 'cached'>>({});
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -213,41 +206,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   };
 
 
-  const preCacheSongTracks = async (song: Song) => {
-    setCachingSongs(prev => ({ ...prev, [song.id]: 'caching' }));
-
-    const cachingPromises = song.tracks.map(async (track) => {
-        try {
-            const isCached = await getCachedArrayBuffer(track.fileKey);
-            if (isCached) return; // Ya está en caché, no hacer nada
-
-            const response = await fetch(`/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`);
-            if (!response.ok) throw new Error(`Fallo al descargar ${track.name}`);
-            const arrayBuffer = await response.arrayBuffer();
-            await cacheArrayBuffer(track.fileKey, arrayBuffer);
-        } catch (error) {
-            console.error(`Error pre-cargando la pista ${track.name}:`, error);
-            throw error; // Propaga el error para que Promise.all lo capture
-        }
-    });
-
-    try {
-        await Promise.all(cachingPromises);
-        setCachingSongs(prev => ({ ...prev, [song.id]: 'cached' }));
-    } catch (error) {
-        toast({
-            variant: 'destructive',
-            title: 'Error de Preparación',
-            description: `No se pudieron guardar todas las pistas de "${song.name}" en el caché.`,
-        });
-        setCachingSongs(prev => {
-            const newStatus = { ...prev };
-            delete newStatus[song.id];
-            return newStatus;
-        });
-    }
-  };
-
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
 
@@ -273,9 +231,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         return;
     }
     
-    // Inicia el pre-cacheo
-    preCacheSongTracks(song);
-    
+    onSongCaching();
+
     // Iterar y añadir cada pista individualmente
     let allAdded = true;
     for (const track of tracksToAdd) {
@@ -303,8 +260,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         title: '¡Canción añadida!',
         description: `"${song.name}" se ha añadido a "${selectedSetlist.name}".`,
       });
-      // Llamar al loader después de que todo se haya guardado
-      onSongCaching();
     }
   };
   
@@ -366,19 +321,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       return (
         <div className="space-y-2">
           {songs.map((song) => {
-            const cacheStatus = cachingSongs[song.id];
-
-            const getCacheIcon = () => {
-                switch(cacheStatus) {
-                    case 'caching':
-                        return <Loader2 className="w-5 h-5 animate-spin text-primary" />;
-                    case 'cached':
-                        return <CheckCircle className="w-5 h-5 text-green-500" />;
-                    default:
-                        return <PlusCircle className="w-5 h-5 text-primary" />;
-                }
-            }
-
             return (
                 <div key={song.id} className="flex items-center gap-3 p-2 rounded-md bg-black border border-amber-400/10 hover:border-amber-400/30 group">
                     <Music2 className="w-5 h-5 text-amber-400/60" />
@@ -389,8 +331,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                          {selectedSetlist && (
-                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={cacheStatus === 'caching'}>
-                                {getCacheIcon()}
+                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)}>
+                                <PlusCircle className="w-5 h-5 text-primary" />
                             </Button>
                         )}
                     </div>
@@ -513,7 +455,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                              index={index}
                              songs={songs}
                              activeSongId={activeSongId}
-                             cachingSongs={cachingSongs}
                              onSongSelected={onSongSelected}
                              onRemove={(songId, songName) => setSongToRemoveFromSetlist({ songId, songName })}
                            >
