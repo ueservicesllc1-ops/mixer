@@ -350,7 +350,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             {/* Header */}
             <div className="grid grid-cols-[30px_1fr_40px_50px_32px] items-center gap-x-3 px-2 py-1 text-xs font-medium text-muted-foreground border-b border-border/50">
                 <Hash className="w-3 h-3 justify-self-center" />
-                <span>Nombre</span>
+                <span>Canción / Artista</span>
                 <Zap className="w-3 h-3 justify-self-center" />
                 <Clock2 className="w-3 h-3 justify-self-center" />
                 <span />
@@ -366,32 +366,35 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                             key={songGroup.songId} 
                             className={cn(
                                 "grid grid-cols-[30px_1fr_40px_50px_32px] items-center gap-x-3 rounded-md group cursor-pointer",
-                                "py-1 text-sm",
+                                "py-2 text-sm",
                                 activeSongId === songGroup.songId ? 'bg-primary/20' : 'hover:bg-accent'
                             )}
                             onClick={() => onSongSelected(songGroup.songId)}
                         >
-                            <span className="justify-self-center text-foreground text-base">{index + 1}</span>
+                            <span className="justify-self-center text-muted-foreground text-xs">{index + 1}</span>
                             
-                            <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-7 h-7 rounded bg-secondary flex items-center justify-center shrink-0">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center shrink-0">
                                     {fullSong?.albumImageUrl ? (
                                         <Image 
                                             src={fullSong.albumImageUrl} 
                                             alt={songGroup.songName} 
-                                            width={28} 
-                                            height={28} 
-                                            className="rounded object-cover w-7 h-7"
+                                            width={32} 
+                                            height={32} 
+                                            className="rounded object-cover w-8 h-8"
                                         />
                                     ) : (
-                                        <Music2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                        <Music2 className="w-4 h-4 text-muted-foreground" />
                                     )}
                                 </div>
-                                <span className="font-semibold text-foreground truncate">{songGroup.songName}</span>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="font-semibold text-sm text-foreground truncate">{songGroup.songName}</span>
+                                  <span className="text-xs text-muted-foreground truncate">{fullSong?.artist}</span>
+                                </div>
                             </div>
 
-                            <span className="justify-self-center text-foreground font-medium">{fullSong?.key ?? '-'}</span>
-                            <span className="justify-self-center text-foreground font-medium">{fullSong?.tempo ?? '--'}</span>
+                            <span className="justify-self-center text-muted-foreground font-medium text-xs">{fullSong?.key ?? '-'}</span>
+                            <span className="justify-self-center text-muted-foreground font-medium text-xs">{fullSong?.tempo ?? '--'}</span>
 
                             <div className="flex justify-center items-center">
                                 {isCaching ? (
