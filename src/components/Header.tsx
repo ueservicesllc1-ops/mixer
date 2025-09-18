@@ -13,6 +13,7 @@ import SettingsDialog from './SettingsDialog';
 import { Input } from './ui/input';
 import type { Song } from '@/actions/songs';
 import VolumeSlider from './VolumeSlider';
+import { useB2Connection } from '@/contexts/B2ConnectionContext';
 import {
   Tooltip,
   TooltipContent,
@@ -78,7 +79,7 @@ const Header: React.FC<HeaderProps> = ({
   masterVuLevel,
   isOnline,
 }) => {
-  
+  const { status: b2Status, operationTime } = useB2Connection();
   const currentBPM = activeSong?.tempo ? activeSong.tempo * playbackRate : null;
   const [bpmInput, setBpmInput] = useState<string>('');
 
@@ -90,16 +91,13 @@ const Header: React.FC<HeaderProps> = ({
     }
   }, [currentBPM]);
 
-  const handleBpmInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setBpmInput(e.target.value);
-  }
+  const handleBpmInput = (e: React.ChangeEvent<HTMLInputElement>) => setBpmInput(e.target.value);
 
   const handleBpmInputBlur = () => {
     const newBpm = parseFloat(bpmInput);
     if (!isNaN(newBpm) && newBpm > 0) {
       onBpmChange(newBpm);
     } else {
-      // Revert if input is invalid
       setBpmInput(currentBPM ? currentBPM.toFixed(1) : '--');
     }
   }
@@ -112,12 +110,17 @@ const Header: React.FC<HeaderProps> = ({
   }
   
   const handleBpmStep = (amount: number) => {
-    if (currentBPM) {
-        onBpmChange(currentBPM + amount);
-    }
+    if (currentBPM) onBpmChange(currentBPM + amount);
   }
 
   const displayNote = activeSong?.key ? transposeNote(activeSong.key, pitch) : '-';
+
+  const B2_STATUS_MAP = {
+    idle: { color: 'text-muted-foreground', tooltip: 'B2: Inactivo' },
+    'in-progress': { color: 'text-yellow-400 animate-pulse', tooltip: 'B2: Operación en curso...' },
+    success: { color: 'text-green-400', tooltip: 'B2: Última operación exitosa' },
+    error: { color: 'text-destructive', tooltip: 'B2: Falló la última operación' },
+  };
 
   return (
     <header className="flex flex-col bg-card/50 border-b border-border p-2 gap-2 rounded-lg">
@@ -138,12 +141,8 @@ const Header: React.FC<HeaderProps> = ({
                  </Button>
                  <div className="flex flex-col items-center justify-center px-1 py-1 w-20">
                     <Input
-                        type="text"
-                        value={bpmInput}
-                        onChange={handleBpmInput}
-                        onBlur={handleBpmInputBlur}
-                        onKeyPress={handleBpmInputKeyPress}
-                        disabled={!activeSong?.tempo}
+                        type="text" value={bpmInput} onChange={handleBpmInput} onBlur={handleBpmInputBlur}
+                        onKeyPress={handleBpmInputKeyPress} disabled={!activeSong?.tempo}
                         className="w-full h-full p-0 m-0 bg-transparent border-none text-center font-mono text-xl font-bold text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)] focus:ring-0 focus:outline-none"
                     />
                     <span className="text-xs font-mono text-amber-400/70 -mt-1">BPM</span>
@@ -160,9 +159,7 @@ const Header: React.FC<HeaderProps> = ({
                     <Minus className="w-5 h-5" />
                  </Button>
                 <div className="bg-black/80 border border-amber-400/20 rounded-md px-2 py-1 w-20 text-center mx-2">
-                    <span className="font-mono text-lg text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)]">
-                        {displayNote}
-                    </span>
+                    <span className="font-mono text-lg text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)]">{displayNote}</span>
                     <span className="text-xs font-mono text-amber-400/70 -mt-1 block">PITCH</span>
                 </div>
                  <Button variant="ghost" size="icon" className="w-10 h-10 text-amber-400/70" onClick={() => onPitchChange(pitch + 1)} disabled={!activeSong}>
@@ -174,38 +171,16 @@ const Header: React.FC<HeaderProps> = ({
             </div>
         </div>
 
-
         <div className="flex items-center justify-center gap-4">
             <div className="flex items-center gap-1 bg-background p-1 rounded-lg">
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onRewind} disabled={!isReadyToPlay}>
-                <Rewind className="w-6 h-6" />
-                </Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onRewind} disabled={!isReadyToPlay}><Rewind className="w-6 h-6" /></Button>
                 <div className="bg-white rounded-lg p-1">
-                    <Button 
-                        variant="secondary" 
-                        size="icon" 
-                        className={cn(
-                        "w-20 h-10 bg-white text-black hover:bg-neutral-200",
-                        !isReadyToPlay && "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                        )}
-                        onClick={isPlaying ? onPause : onPlay}
-                        disabled={!isReadyToPlay}
-                    >
-                        {!isReadyToPlay ? (
-                            <Loader2 className="w-8 h-8 animate-spin" />
-                        ) : isPlaying ? (
-                            <Pause className="w-8 h-8" />
-                        ) : (
-                            <Play className="w-8 h-8" />
-                        )}
+                    <Button variant="secondary" size="icon" className={cn("w-20 h-10 bg-white text-black hover:bg-neutral-200", !isReadyToPlay && "bg-neutral-300 text-neutral-500 cursor-not-allowed")} onClick={isPlaying ? onPause : onPlay} disabled={!isReadyToPlay}>
+                        {!isReadyToPlay ? <Loader2 className="w-8 h-8 animate-spin" /> : isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
                     </Button>
                 </div>
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onStop} disabled={!isReadyToPlay}>
-                <Square className="w-6 h-6" />
-                </Button>
-                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onFastForward} disabled={!isReadyToPlay}>
-                <FastForward className="w-6 h-6" />
-                </Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onStop} disabled={!isReadyToPlay}><Square className="w-6 h-6" /></Button>
+                <Button variant="secondary" size="icon" className="w-12 h-10" onClick={onFastForward} disabled={!isReadyToPlay}><FastForward className="w-6 h-6" /></Button>
             </div>
         </div>
         
@@ -213,44 +188,32 @@ const Header: React.FC<HeaderProps> = ({
              <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className={cn(
-                      'flex items-center justify-center w-10 h-10 rounded-full',
-                      isOnline ? 'bg-green-500/20' : 'bg-destructive/20'
-                  )}>
-                      {isOnline ? (
-                          <Wifi className="w-5 h-5 text-green-400" />
-                      ) : (
-                          <WifiOff className="w-5 h-5 text-destructive" />
-                      )}
+                  <div className={cn('flex items-center justify-center w-10 h-10 rounded-full', isOnline ? 'bg-green-500/20' : 'bg-destructive/20')}>
+                      {isOnline ? <Wifi className="w-5 h-5 text-green-400" /> : <WifiOff className="w-5 h-5 text-destructive" />}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>{isOnline ? 'Conectado a internet' : 'Modo offline'}</p>
-                </TooltipContent>
+                <TooltipContent><p>{isOnline ? 'Conectado a internet' : 'Modo offline'}</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <DownloadCloud className={cn("w-5 h-5", B2_STATUS_MAP[b2Status].color)} />
+                    {b2Status === 'in-progress' && (
+                      <span className="font-mono text-xs text-yellow-400">{operationTime}s</span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent><p>{B2_STATUS_MAP[b2Status].tooltip}</p></TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            <SettingsDialog 
-              fadeOutDuration={fadeOutDuration}
-              onFadeOutDurationChange={onFadeOutDurationChange}
-              isPanVisible={isPanVisible}
-              onPanVisibilityChange={onPanVisibilityChange}
-              isOnline={isOnline}
-            >
-                <Button variant="ghost" size="icon">
-                    <Settings />
-                </Button>
+            <SettingsDialog fadeOutDuration={fadeOutDuration} onFadeOutDurationChange={onFadeOutDurationChange} isPanVisible={isPanVisible} onPanVisibilityChange={onPanVisibilityChange} isOnline={isOnline}>
+                <Button variant="ghost" size="icon"><Settings /></Button>
             </SettingsDialog>
         </div>
       </div>
       
-      <Timeline
-        currentTime={currentTime}
-        duration={duration}
-        onSeek={onSeek}
-        structure={songStructure}
-        isReady={!!isReadyToPlay}
-       />
+      <Timeline currentTime={currentTime} duration={duration} onSeek={onSeek} structure={songStructure} isReady={!!isReadyToPlay} />
 
       {showLoadingBar && (
         <div className="flex items-center gap-3 px-2 pt-2">
@@ -258,9 +221,7 @@ const Header: React.FC<HeaderProps> = ({
             <div className="flex-grow">
                  <Progress value={loadingProgress} className="h-2" indicatorClassName="bg-yellow-500" />
             </div>
-            <span className="text-xs text-yellow-400 font-mono w-28 text-right">
-                {Math.round(loadingProgress || 0)}%
-            </span>
+            <span className="text-xs text-yellow-400 font-mono w-28 text-right">{Math.round(loadingProgress || 0)}%</span>
         </div>
       )}
     </header>

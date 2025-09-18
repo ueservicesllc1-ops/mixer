@@ -16,6 +16,7 @@ import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 import { blobToDataURI } from '@/lib/utils';
 import { getB2FileAsDataURI } from '@/actions/download';
 import { useToast } from '@/components/ui/use-toast';
+import { useB2Connection } from '@/contexts/B2ConnectionContext';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -74,19 +75,16 @@ const DawPage = () => {
 
   const [isOnline, setIsOnline] = useState(true);
   const { toast } = useToast();
+  const { setStatus, startTimer, stopTimer } = useB2Connection();
 
   useEffect(() => {
-    // Establecer el estado inicial
     if (typeof window !== 'undefined' && typeof window.navigator !== 'undefined') {
       setIsOnline(window.navigator.onLine);
     }
-
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -105,29 +103,17 @@ const DawPage = () => {
 
         if (eqNodesRef.current.length === 0) {
             const Tone = toneRef.current;
-            
             const eqChain = eqFrequencies.map((freq) => {
-                const filter = new Tone.Filter(freq, 'peaking');
-                filter.Q.value = 1.5;
-                return filter;
+                return new Tone.Filter(freq, 'peaking', { Q: 1.5 });
             });
-
-            masterMeterRef.current = new Tone.Meter();
             masterVolumeNodeRef.current = new Tone.Volume();
-            
-            if (eqChain.length > 0) {
-                // Conexión en serie: EQ -> Master Volume -> Master Meter -> Destination
-                Tone.connectSeries(...eqChain, masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination);
-            } else {
-                // Conexión sin EQ: Master Volume -> Master Meter -> Destination
-                Tone.connectSeries(masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination);
-            }
-            
+            masterMeterRef.current = new Tone.Meter();
+            const masterChain = [...eqChain, masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination];
+            Tone.connectSeries(...masterChain);
             eqNodesRef.current = eqChain;
         }
     }
   }, []);
-
 
   useEffect(() => {
     initAudio();
@@ -136,10 +122,8 @@ const DawPage = () => {
   useEffect(() => {
     const Tone = toneRef.current;
     if (!Tone || !masterVolumeNodeRef.current) return;
-
     const newDb = masterVolume > 0 ? (masterVolume / 100) * 40 - 40 : -Infinity;
     masterVolumeNodeRef.current.volume.value = newDb;
-
   }, [masterVolume]);
 
   useEffect(() => {
@@ -157,15 +141,12 @@ const DawPage = () => {
       if (upperCaseName === 'CUES') return 2;
       return 3;
     };
-    
     return tracks
       .filter(t => t.songId === activeSongId)
       .sort((a, b) => {
           const prioA = getPrio(a.name);
           const prioB = getPrio(b.name);
-          if (prioA !== prioB) {
-              return prioA - prioB;
-          }
+          if (prioA !== prioB) return prioA - prioB;
           return a.name.localeCompare(b.name);
       });
   }, [tracks, activeSongId]);
@@ -183,7 +164,6 @@ const DawPage = () => {
 
   const handleSongSelected = useCallback((songId: string) => {
       if (songId === activeSongId) return;
-      // Stop everything before changing the song
       const Tone = toneRef.current;
       if (Tone) {
           Tone.Transport.stop();
@@ -194,8 +174,6 @@ const DawPage = () => {
       }
       setIsPlaying(false);
       setCurrentTime(0);
-
-      // Now set the new song
       setActiveSongId(songId);
       setPlaybackRate(1);
       setPitch(0);
@@ -231,20 +209,14 @@ const DawPage = () => {
   const stopAllTracks = useCallback(() => {
     const Tone = toneRef.current;
     if (!Tone) return;
-    
     Tone.Transport.stop();
-    // Stop and unsync all players
     Object.values(trackNodesRef.current).forEach(node => {
-      if (node.player.state === 'started') {
-        node.player.stop();
-      }
+      if (node.player.state === 'started') node.player.stop();
       node.player.unsync();
     });
-
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);
-
 
    useEffect(() => {
     if (!activeSongId) {
@@ -253,107 +225,70 @@ const DawPage = () => {
         setLoadedTracksCount(0);
         return;
     }
-
     const loadAudioData = async () => {
         await initAudio();
         const Tone = toneRef.current;
         if (!Tone || !eqNodesRef.current.length || !activeSong) return;
-
-        // Tracks for the current song from the setlist
         const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
-        // Filter out tracks that are already loaded
         const tracksToLoad = tracksForCurrentSong.filter(setlistTrack => !trackNodesRef.current[setlistTrack.id]);
-        
         if (tracksToLoad.length === 0) {
             setLoadingTracks(new Set());
             setLoadedTracksCount(tracksForCurrentSong.length);
             return;
         }
-
         setLoadingTracks(new Set(tracksToLoad.map(t => t.id)));
         setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
         
+        startTimer();
         const loadPromises = tracksToLoad.map(async (setlistTrack) => {
             try {
                 let dataUri: string | undefined;
-                
-                // Find the full track definition from the global 'songs' state, which contains the handle
                 const songDefinition = songs.find(s => s.id === setlistTrack.songId);
                 const trackDefinition = songDefinition?.tracks.find(t => t.fileKey === setlistTrack.fileKey);
-
-                // 1. Attempt to load from local file handle (if available)
                 if (trackDefinition?.handle) {
                     try {
                         const file = await trackDefinition.handle.getFile();
                         dataUri = await blobToDataURI(file);
-                        console.log(`SUCCESS: Loaded track "${setlistTrack.name}" from local file handle.`);
-                    } catch (e) {
-                        console.warn(`Local file handle for ${setlistTrack.name} failed. Will fallback to server download.`, e);
-                    }
+                    } catch (e) { console.warn(`Local file handle failed. Fallback to server.`, e); }
                 }
-                
-                // 2. If no dataUri yet, and we are online, fetch from B2 using Server Action
                 if (!dataUri && isOnline) {
-                    console.log(`Local file handle not found or failed for: ${setlistTrack.name}. Fetching from B2 via Server Action.`);
                     const result = await getB2FileAsDataURI(setlistTrack.fileKey);
                     if (result.success && result.dataUri) {
                         dataUri = result.dataUri;
-                        console.log(`SUCCESS: Downloaded track "${setlistTrack.name}" from B2.`);
                     } else {
-                        // This error will be caught by the outer catch block
-                        throw new Error(result.error || `Failed to fetch '${setlistTrack.name}' from server.`);
+                        throw new Error(result.error || `Failed to fetch '${setlistTrack.name}'`);
                     }
                 }
+                if (!dataUri) throw new Error(`Offline and no local file for ${setlistTrack.name}.`);
                 
-                // 3. If still no dataUri, it means we are offline and don't have the file locally.
-                if (!dataUri) {
-                    const errorMessage = `Estás desconectado. No se puede descargar la pista "${setlistTrack.name}".`;
-                    throw new Error(errorMessage);
-                }
-                
-                // 4. If we have a dataUri, create the Tone.js player
                 const player = new Tone.Player(dataUri);
                 player.loop = true;
                 const volume = new Tone.Volume(0);
                 const pitchShift = new Tone.PitchShift({ pitch: pitch });
                 const panner = new Tone.Panner(0);
                 const waveform = new Tone.Waveform(256);
-                
                 player.chain(volume, panner, pitchShift, waveform);
-                
-                if (eqNodesRef.current.length > 0) {
-                    pitchShift.connect(eqNodesRef.current[0]);
-                } else {
-                    pitchShift.toDestination();
-                }
-                
+                pitchShift.connect(eqNodesRef.current[0]);
                 trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
                 setLoadedTracksCount(prev => prev + 1);
-
             } catch (error) {
+                setStatus('error');
                 console.error(`Error loading track ${setlistTrack.name}:`, error);
                 toast({
                   variant: "destructive",
                   title: `Error al cargar pista`,
                   description: `${setlistTrack.name}: ${(error as Error).message}`,
                 });
-                // Also update loading state on error to avoid getting stuck
-                setLoadingTracks(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(setlistTrack.id);
-                    return newSet;
-                });
+                setLoadingTracks(prev => { const newSet = new Set(prev); newSet.delete(setlistTrack.id); return newSet; });
             }
         });
-    
         await Promise.all(loadPromises);
-        // After all promises, clear the loading set completely
+        stopTimer();
+        if (loadingTracks.size === 0) setStatus('success');
         setLoadingTracks(new Set());
     };
-
     loadAudioData();
-
-   }, [activeSongId, songs, tracks, isOnline, initAudio, pitch, toast, activeSong]);
+   }, [activeSongId, songs, tracks, isOnline, pitch, toast, activeSong, initAudio, startTimer, stopTimer, setStatus]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -372,18 +307,14 @@ const DawPage = () => {
       newVolumes[track.id] = volumes[track.id] ?? 100;
     });
     setVolumes(newVolumes);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSongId]);
-
+  }, [activeTracks, volumes]);
 
   useEffect(() => {
     let animationFrameId: number;
     const Tone = toneRef.current;
-
     if (isPlaying && Tone) {
         const update = () => {
             setCurrentTime(Tone.Transport.seconds);
-
             const newVuLevels: Record<string, number> = {};
             activeTracks.forEach(track => {
                 const node = trackNodesRef.current[track.id];
@@ -393,27 +324,18 @@ const DawPage = () => {
                     if (values instanceof Float32Array) {
                         for (let i = 0; i < values.length; i++) {
                             const absValue = Math.abs(values[i]);
-                            if (absValue > peak) {
-                                peak = absValue;
-                            }
+                            if (absValue > peak) peak = absValue;
                         }
                     }
-                    // Convert peak from amplitude (0-1) to dB-like scale for the meter
-                    const db = 20 * Math.log10(peak);
-                    newVuLevels[track.id] = db;
+                    newVuLevels[track.id] = 20 * Math.log10(peak);
                 }
             });
             setVuLevels(newVuLevels);
-
-            if (masterMeterRef.current) {
-                setMasterVuLevel(masterMeterRef.current.getValue() as number);
-            }
-
+            if (masterMeterRef.current) setMasterVuLevel(masterMeterRef.current.getValue() as number);
             animationFrameId = requestAnimationFrame(update);
         };
         update();
     } else {
-        // Slowly decay VU levels to 0 when paused/stopped
         const decay = () => {
             setVuLevels(prevLevels => {
                 const newLevels: Record<string, number> = {};
@@ -421,53 +343,36 @@ const DawPage = () => {
                 for (const trackId in prevLevels) {
                     const currentLevel = prevLevels[trackId];
                     if (currentLevel > -60) {
-                        newLevels[trackId] = currentLevel - 2; // Decay rate
+                        newLevels[trackId] = currentLevel - 2;
                         hasActiveLevels = true;
                     } else {
                         newLevels[trackId] = -Infinity;
                     }
                 }
-                if (hasActiveLevels) {
-                    animationFrameId = requestAnimationFrame(decay);
-                }
+                if (hasActiveLevels) animationFrameId = requestAnimationFrame(decay);
                 return newLevels;
             });
-            setMasterVuLevel(prev => prev > -60 ? prev -2 : -Infinity);
+            setMasterVuLevel(prev => prev > -60 ? prev - 2 : -Infinity);
         };
         decay();
     }
-
-    return () => {
-        if (animationFrameId) {
-            cancelAnimationFrame(animationFrameId);
-        }
-    };
+    return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
 }, [isPlaying, activeTracks]);
-
 
   const getIsMuted = useCallback((trackId: string) => {
     const isMuted = mutedTracks.includes(trackId);
     const isSoloActive = soloTracks.length > 0;
     const isThisTrackSolo = soloTracks.includes(trackId);
-
     if (isMuted) return true;
     if (isSoloActive) return !isThisTrackSolo;
     return false;
   }, [mutedTracks, soloTracks]);
 
   useEffect(() => {
-    const Tone = toneRef.current;
-    if (!Tone) return;
-
     Object.keys(trackNodesRef.current).forEach(trackId => {
         const node = trackNodesRef.current[trackId];
-        if (node?.volume) {
-          const isMuted = getIsMuted(trackId);
-          node.volume.mute = isMuted;
-        }
-        if (node?.pitchShift) {
-            node.pitchShift.pitch = pitch;
-        }
+        if (node?.volume) node.volume.mute = getIsMuted(trackId);
+        if (node?.pitchShift) node.pitchShift.pitch = pitch;
     });
   }, [mutedTracks, soloTracks, getIsMuted, pitch]);
   
@@ -475,57 +380,32 @@ const DawPage = () => {
       const Tone = toneRef.current;
       if (!Tone || !activeSong) return;
       Object.values(trackNodesRef.current).forEach(({ player }) => {
-        if (player) {
-          player.playbackRate = playbackRate;
-        }
+        if (player) player.playbackRate = playbackRate;
       });
       Tone.Transport.bpm.value = activeSong.tempo * playbackRate;
-      
   }, [playbackRate, activeSong]);
-
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
     if (!Tone || loadingTracks.size > 0 || !activeSong) return;
-
     await initAudio();
-    
-    if (Tone.context.state === 'suspended') {
-      await Tone.context.resume();
-    }
-
+    if (Tone.context.state === 'suspended') await Tone.context.resume();
     if (Tone.Transport.state !== 'started') {
-      // UNSYNC all players first to be safe
-      Object.values(trackNodesRef.current).forEach(node => {
-        if (node.player) {
-          node.player.unsync();
-        }
-      });
-      // SYNC and START only the players for the currently active song
-      activeTracks.forEach(track => {
-        const node = trackNodesRef.current[track.id];
-        if (node && node.player) {
-          node.player.sync().start(0);
-        }
-      });
-
+      Object.values(trackNodesRef.current).forEach(node => node.player?.unsync());
+      activeTracks.forEach(track => trackNodesRef.current[track.id]?.player.sync().start(0));
       Tone.Transport.start();
       setIsPlaying(true);
     }
   }, [loadingTracks.size, activeSong, initAudio, activeTracks]);
 
-
   const handlePause = useCallback(() => {
     const Tone = toneRef.current;
     if (!Tone) return;
-    
     Tone.Transport.pause();
     setIsPlaying(false);
   }, []);
 
-  const handleStop = useCallback(() => {
-    stopAllTracks();
-  }, [stopAllTracks]);
+  const handleStop = useCallback(() => stopAllTracks(), [stopAllTracks]);
 
   const handleMuteToggle = (trackId: string) => {
     setMutedTracks(prev => prev.includes(trackId) ? prev.filter(id => id !== trackId) : [...prev, trackId]);
@@ -545,21 +425,16 @@ const DawPage = () => {
     }
   };
   
-
   const handleVolumeChange = useCallback((trackId: string, newVol: number) => {
     setVolumes(prev => ({...prev, [trackId]: newVol}));
     const node = trackNodesRef.current[trackId];
     if (node && node.volume) {
-      // Convert slider value (0-100) to dB (-60 to 0)
       const newDb = newVol > 0 ? (newVol / 100) * 40 - 40 : -Infinity;
       node.volume.volume.value = newDb;
     }
   }, []);
 
-  const handleMasterVolumeChange = (newVol: number) => {
-    setMasterVolume(newVol);
-  }
-
+  const handleMasterVolumeChange = (newVol: number) => setMasterVolume(newVol);
 
   const handleEqChange = (bandIndex: number, newValue: number) => {
     setEqBands(prevBands => {
@@ -569,32 +444,24 @@ const DawPage = () => {
     });
   };
 
-  const handleEqReset = () => {
-    setEqBands([50, 50, 50, 50, 50]);
-  };
+  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
   
   const handleBpmChange = (newBpm: number) => {
       if (!activeSong || !activeSong.tempo) return;
       const newRate = newBpm / activeSong.tempo;
-      const clampedRate = Math.max(0.5, Math.min(2, newRate));
-      setPlaybackRate(clampedRate);
+      setPlaybackRate(Math.max(0.5, Math.min(2, newRate)));
   };
   
   const handleSeek = (newTime: number) => {
     const Tone = toneRef.current;
     if (!Tone || !activeSong) return;
-    
     Tone.Transport.seconds = newTime;
     setCurrentTime(newTime);
   };
   
-  const totalTracksForCurrentSong = useMemo(() => {
-    return tracks.filter(t => t.songId === activeSongId).length;
-  }, [tracks, activeSongId]);
-
+  const totalTracksForCurrentSong = useMemo(() => tracks.filter(t => t.songId === activeSongId).length, [tracks, activeSongId]);
   const loadingProgress = totalTracksForCurrentSong > 0 ? (loadedTracksCount / totalTracksForCurrentSong) * 100 : 100;
   const showLoadingBar = loadingTracks.size > 0 || (activeSongId && totalTracksForCurrentSong > 0 && loadedTracksCount < totalTracksForCurrentSong);
-
 
   return (
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
