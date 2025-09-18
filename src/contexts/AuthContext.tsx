@@ -2,14 +2,19 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, User, signOut as firebaseSignOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseAuthUser, signOut as firebaseSignOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { doc, setDoc, getDoc, runTransaction } from 'firebase/firestore';
 
+// Interfaz extendida para incluir nuestros datos personalizados
+export interface AppUser extends FirebaseAuthUser {
+    shortId?: string;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -24,7 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-const generateAndAssignShortId = async (user: User): Promise<string | null> => {
+const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<string | null> => {
     const userRef = doc(db, 'users', user.uid);
     const userSnap = await getDoc(userRef);
 
@@ -43,7 +48,7 @@ const generateAndAssignShortId = async (user: User): Promise<string | null> => {
             if (!counterDoc.exists()) {
                 newCount = 1;
             } else {
-                newCount = counterDoc.data().count + 1;
+                newCount = (counterDoc.data().count || 0) + 1;
             }
 
             const initial = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
@@ -73,7 +78,29 @@ const generateAndAssignShortId = async (user: User): Promise<string | null> => {
 };
 
 
-const saveUserToFirestore = async (user: User) => {
+const fetchAppUser = async (firebaseUser: FirebaseAuthUser): Promise<AppUser | null> => {
+    const userRef = doc(db, 'users', firebaseUser.uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+        const firestoreData = userSnap.data();
+        return {
+            ...firebaseUser,
+            shortId: firestoreData.shortId,
+        };
+    } else {
+        // Esto podría pasar si un usuario existe en Auth pero no en Firestore (caso raro)
+        // Lo creamos ahora
+        const shortId = await generateAndAssignShortId(firebaseUser);
+        return {
+            ...firebaseUser,
+            shortId: shortId || undefined,
+        };
+    }
+}
+
+
+const saveUserToFirestore = async (user: FirebaseAuthUser) => {
     const userRef = doc(db, 'users', user.uid);
     const docSnap = await getDoc(userRef);
 
@@ -101,7 +128,7 @@ const ProtectedRoutes: React.FC<{ children: ReactNode }> = ({ children }) => {
         }
     }, [user, loading, router, pathname]);
 
-    if (loading) {
+    if (loading && !user) {
         return (
             <div className="flex h-screen w-screen items-center justify-center bg-background">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -114,16 +141,18 @@ const ProtectedRoutes: React.FC<{ children: ReactNode }> = ({ children }) => {
 
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        await saveUserToFirestore(currentUser);
+        const appUser = await fetchAppUser(currentUser);
+        setUser(appUser);
+      } else {
+        setUser(null);
       }
-      setUser(currentUser);
       setLoading(false);
     });
 
@@ -136,6 +165,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(true);
       const result = await signInWithPopup(auth, provider);
       await saveUserToFirestore(result.user);
+      const appUser = await fetchAppUser(result.user);
+      setUser(appUser); // Actualizar el estado con el usuario completo
       router.push('/daw');
     } catch (error) {
       console.error("Error during Google sign-in:", error);
@@ -148,6 +179,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setLoading(true);
       await firebaseSignOut(auth);
+      setUser(null);
       router.push('/');
     } catch (error) {
       console.error("Error signing out:", error);

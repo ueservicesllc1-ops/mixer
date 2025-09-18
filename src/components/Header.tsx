@@ -11,7 +11,7 @@ import SettingsDialog from './SettingsDialog';
 import { Input } from './ui/input';
 import type { Song } from '@/actions/songs';
 import VolumeSlider from './VolumeSlider';
-import type { User } from 'firebase/auth';
+import type { AppUser } from '@/contexts/AuthContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +50,7 @@ interface HeaderProps {
   masterVolume: number;
   onMasterVolumeChange: (volume: number) => void;
   masterVuLevel: number;
-  user: User | null;
+  user: AppUser | null;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -209,6 +209,11 @@ const Header: React.FC<HeaderProps> = ({
                     <p className="text-xs leading-none text-muted-foreground">
                       {user?.email}
                     </p>
+                    {user?.shortId && (
+                      <p className="text-xs leading-none text-muted-foreground pt-1 font-mono">
+                        ID: {user.shortId}
+                      </p>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
