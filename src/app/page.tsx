@@ -109,6 +109,7 @@ const DawPage = () => {
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
             
+            // Correct chain: EQ -> Master Volume -> Master Meter -> Destination
             Tone.connectSeries(...eqChain, masterVol);
             masterVol.connect(masterMeter);
             masterVol.toDestination();
@@ -240,7 +241,7 @@ const DawPage = () => {
             await initAudio();
             const Tone = toneRef.current;
             const currentSong = songs.find(s => s.id === activeSongId);
-            if (!Tone || !eqNodesRef.current.length || !currentSong) return;
+            if (!Tone || eqNodesRef.current.length === 0 || !currentSong) return;
 
             const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
             const tracksToLoad = tracksForCurrentSong.filter(t => !trackNodesRef.current[t.id]);
@@ -316,7 +317,7 @@ const DawPage = () => {
 
         loadAudioData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSongId, isOnline, songs]);
+    }, [activeSongId, isOnline]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -469,6 +470,8 @@ const DawPage = () => {
   }, []);
 
   const handleMasterVolumeChange = (newVol: number) => setMasterVolume(newVol);
+  
+  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
 
   const handleEqChange = (bandIndex: number, newValue: number) => {
     setEqBands(prevBands => {
@@ -478,8 +481,6 @@ const DawPage = () => {
     });
   };
 
-  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
-  
   const handleBpmChange = (newBpm: number) => {
       if (!activeSong || !activeSong.tempo) return;
       const newRate = newBpm / activeSong.tempo;
