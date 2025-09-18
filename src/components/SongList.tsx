@@ -35,6 +35,7 @@ interface SongListProps {
   onSongSelected: (songId: string) => void;
   onSongsFetched: (songs: Song[]) => void;
   onSongAddedToSetlist: () => void;
+  isSongLoading: boolean;
 }
 
 type SongToRemove = {
@@ -48,7 +49,7 @@ interface GroupedSong {
     tracks: SetlistSong[];
 }
 
-const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
+const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingSongId, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, loadingSongId: string | null, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
 
     const style = {
@@ -57,6 +58,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelecte
     };
     
     const fullSong = songs.find(s => s.id === songGroup.songId);
+    const isLoadingThisSong = loadingSongId === songGroup.songId;
 
     return (
         <div 
@@ -77,7 +79,9 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelecte
             
             <div className="flex items-center gap-2 min-w-0">
                 <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center shrink-0">
-                    {fullSong?.albumImageUrl ? (
+                    {isLoadingThisSong ? (
+                        <Loader2 className="w-3 h-3 text-primary animate-spin" />
+                    ) : fullSong?.albumImageUrl ? (
                         <Image 
                             src={fullSong.albumImageUrl} 
                             alt={songGroup.songName} 
@@ -115,7 +119,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelecte
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, isSongLoading }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -126,6 +130,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [setlistsError, setSetlistsError] = useState<string | null>(null);
   
   const [selectedSetlist, setSelectedSetlist] = useState<Setlist | null>(null);
+  const [loadingSongId, setLoadingSongId] = useState<string | null>(null);
   const [setlistToEdit, setSetlistToEdit] = useState<Setlist | null>(null);
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
@@ -144,6 +149,19 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       setSelectedSetlist(null);
     }
   }, [initialSetlist]);
+
+  // When a song starts loading, set the loading ID. When it finishes, clear it.
+  useEffect(() => {
+    if (activeSongId) {
+        setLoadingSongId(activeSongId);
+    }
+  }, [activeSongId]);
+
+  useEffect(() => {
+      if (!isSongLoading && loadingSongId) {
+          setLoadingSongId(null);
+      }
+  }, [isSongLoading, loadingSongId]);
 
   const handleFetchSongs = async () => {
     if (!user) return;
@@ -209,8 +227,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
 
-    onSongAddedToSetlist();
-
     const tracksToAdd: SetlistSong[] = song.tracks.map(track => ({
       id: `${song.id}_${track.fileKey}`, 
       name: track.name,
@@ -256,6 +272,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         title: '¡Canción añadida!',
         description: `"${song.name}" se ha añadido a "${selectedSetlist.name}".`,
       });
+
+      onSongAddedToSetlist();
     }
   };
   
@@ -451,6 +469,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                              index={index}
                              songs={songs}
                              activeSongId={activeSongId}
+                             loadingSongId={loadingSongId}
                              onSongSelected={onSongSelected}
                              onRemove={(songId, songName) => setSongToRemoveFromSetlist({ songId, songName })}
                            >

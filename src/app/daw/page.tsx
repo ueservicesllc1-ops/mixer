@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Header from '@/components/Header';
@@ -15,7 +14,7 @@ import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
 import { getB2FileAsDataURI } from '@/actions/download';
 import { useAuth } from '@/contexts/AuthContext';
-import JudithLoader from '@/components/JudithLoader';
+import { Loader2 } from 'lucide-react';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -55,7 +54,7 @@ const DawPage = () => {
   const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isPreparingPlay, setIsPreparingPlay] = useState(false);
+  const [isSongLoading, setIsSongLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [pitch, setPitch] = useState(0);
@@ -209,7 +208,8 @@ const DawPage = () => {
         if (initialSetlist.songs.length > 0 && !activeSongId) {
             const firstSongId = initialSetlist.songs[0].songId;
             if (firstSongId) {
-                setActiveSongId(firstSongId);
+                // Do not auto-select on initial load
+                // setActiveSongId(firstSongId);
             }
         }
     }
@@ -224,7 +224,7 @@ const DawPage = () => {
                 return;
             }
 
-            setIsPreparingPlay(true);
+            setIsSongLoading(true);
             await initAudio();
             const Tone = toneRef.current;
             if (!Tone || eqNodesRef.current.length === 0) return;
@@ -241,7 +241,7 @@ const DawPage = () => {
             const tracksForSong = tracks.filter(t => t.songId === activeSongId);
             if(tracksForSong.length === 0) {
               setDuration(0);
-              setIsPreparingPlay(false);
+              setIsSongLoading(false);
               return;
             }
             
@@ -285,7 +285,7 @@ const DawPage = () => {
 
             await Promise.allSettled(loadPromises);
             setDuration(maxDuration);
-            setIsPreparingPlay(false);
+            setIsSongLoading(false);
         };
 
         prepareAudioNodes();
@@ -480,19 +480,18 @@ const DawPage = () => {
   
   return (
     <>
-    <JudithLoader isVisible={isPreparingPlay} />
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
       <div className="col-span-2 row-start-1">
         <Header 
             isPlaying={isPlaying}
-            isPreparingPlay={isPreparingPlay}
+            isPreparingPlay={isSongLoading}
             onPlay={handlePlay}
             onPause={handlePause}
             onStop={stopAllTracks}
             currentTime={currentTime}
             duration={duration}
             onSeek={handleSeek}
-            isReadyToPlay={!!activeSong && !isPreparingPlay}
+            isReadyToPlay={!!activeSong && !isSongLoading}
             fadeOutDuration={fadeOutDuration}
             onFadeOutDurationChange={setFadeOutDuration}
             isPanVisible={isPanVisible}
@@ -554,6 +553,7 @@ const DawPage = () => {
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
             onSongAddedToSetlist={() => {}}
+            isSongLoading={isSongLoading}
         />
         <TonicPad />
       </div>
