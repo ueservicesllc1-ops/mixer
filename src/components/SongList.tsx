@@ -63,13 +63,13 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
             ref={setNodeRef}
             style={style}
             className={cn(
-                "grid grid-cols-[20px_1fr_30px_40px_32px] items-center gap-x-2 rounded-md group cursor-pointer relative",
+                "grid grid-cols-[auto_20px_1fr_30px_40px_32px] items-center gap-x-2 rounded-md group cursor-pointer",
                 "py-1 px-2",
                 activeSongId === songGroup.songId ? 'bg-primary/20' : 'hover:bg-accent'
             )}
             onClick={() => onSongSelected(songGroup.songId)}
         >
-             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none absolute -left-4 top-0 bottom-0 w-6 opacity-50 group-hover:opacity-100 transition-opacity">
+             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none opacity-60 hover:opacity-100 transition-opacity">
                 <GripVertical className="w-4 h-4 text-neutral-400" />
              </div>
 
@@ -477,7 +477,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     return (
         <div className="flex flex-col">
             {/* Header */}
-            <div className="grid grid-cols-[20px_1fr_30px_40px_32px] items-center gap-x-2 px-2 py-1 text-xs font-mono text-muted-foreground border-b border-border/50">
+            <div className="grid grid-cols-[auto_20px_1fr_30px_40px_32px] items-center gap-x-2 px-2 py-1 text-xs font-mono text-muted-foreground border-b border-border/50">
+                <div />
                 <Hash className="w-3 h-3 justify-self-center" />
                 <span className="text-left">Canción</span>
                 <Zap className="w-3 h-3 justify-self-center" />
