@@ -113,8 +113,10 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
   }
 
   const handleFilePicker = async () => {
+    const useFallback = () => document.getElementById('file-picker-input-fallback')?.click();
+    
     if (!window.showOpenFilePicker) {
-        document.getElementById('file-picker-input-fallback')?.click();
+        useFallback();
         return;
     }
     try {
@@ -144,8 +146,8 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
         }
     } catch (err: any) {
         if (err.name !== 'AbortError') {
-            console.error("Error al usar File System Access API:", err);
-            document.getElementById('file-picker-input-fallback')?.click();
+            console.error("Error with File System Access API, using fallback:", err);
+            useFallback();
         }
     }
   };
