@@ -2,6 +2,7 @@
 'use client';
 
 import localforage from 'localforage';
+import type { ToneAudioBuffer } from 'tone';
 
 const CACHE_VERSION = 'v2';
 const DB_NAME = 'audioCacheDB';
@@ -32,10 +33,12 @@ export const getCachedArrayBuffer = async (url: string): Promise<ArrayBuffer | n
 };
 
 // Función para guardar un ArrayBuffer en el caché
-export const cacheArrayBuffer = async (url: string, buffer: ArrayBuffer): Promise<void> => {
+export const cacheArrayBuffer = async (url: string, buffer: ArrayBuffer | ToneAudioBuffer): Promise<void> => {
   try {
     const key = `${CACHE_VERSION}-${url}`;
-    await audioStore.setItem(key, buffer.slice(0)); // Use slice(0) to store a copy
+    // Si es un ToneAudioBuffer, lo convertimos a ArrayBuffer
+    const arrayBuffer = (buffer instanceof ArrayBuffer) ? buffer : buffer.toArray();
+    await audioStore.setItem(key, arrayBuffer.slice(0)); // Use slice(0) to store a copy
     console.log(`Cached: ${url}`);
   } catch (error) {
     console.error('Error setting to cache:', error);

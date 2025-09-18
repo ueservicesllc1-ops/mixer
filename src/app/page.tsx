@@ -187,7 +187,8 @@ const DawPage = () => {
     } else {
       setActiveSongId('');
     }
-  }, [initialSetlist, activeSongId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSetlist]);
 
   useEffect(() => {
         const prepareAudioNodes = async () => {
@@ -220,26 +221,19 @@ const DawPage = () => {
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
                     const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
-                    
-                    // 1. Check cache first
                     const cachedBuffer = await getCachedArrayBuffer(track.fileKey);
 
-                    const player = new Tone.Player();
-                    
+                    let buffer: import('tone').ToneAudioBuffer;
                     if (cachedBuffer) {
-                        // Cache HIT: Load from cached ArrayBuffer
-                        const buffer = await new Tone.ToneAudioBuffer().fromArray(cachedBuffer);
-                        player.buffer = buffer;
+                        buffer = await Tone.ToneAudioBuffer.fromArrayBuffer(cachedBuffer);
                     } else {
-                        // Cache MISS: Stream from URL and cache it
-                        const buffer = await new Tone.ToneAudioBuffer(streamingUrl);
-                        player.buffer = buffer;
-                        // Don't wait for caching to complete to avoid blocking
-                        cacheArrayBuffer(track.fileKey, buffer.get()!).catch(err => {
+                        buffer = await new Tone.ToneAudioBuffer(streamingUrl);
+                        cacheArrayBuffer(track.fileKey, buffer.toArray()).catch(err => {
                             console.warn("Failed to cache track:", track.fileKey, err);
                         });
                     }
                     
+                    const player = new Tone.Player(buffer);
                     player.loop = true;
                     
                     const playerDuration = player.buffer.duration;
