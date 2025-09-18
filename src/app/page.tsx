@@ -83,7 +83,7 @@ const DawPage = () => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
+    window.addEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -109,7 +109,7 @@ const DawPage = () => {
             const masterMeter = new Tone.Meter();
             
             Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
-
+            
             eqNodesRef.current = eqChain;
             masterVolumeNodeRef.current = masterVol;
             masterMeterRef.current = masterMeter;
@@ -236,7 +236,6 @@ const DawPage = () => {
             const Tone = toneRef.current;
             if (!Tone || eqNodesRef.current.length === 0) return;
 
-            // Dispose old nodes
             Object.values(trackNodesRef.current).forEach(node => {
                 node.player.dispose();
                 node.panner.dispose();
@@ -245,8 +244,7 @@ const DawPage = () => {
                 node.waveform.dispose();
             });
             trackNodesRef.current = {};
-            setLoadedTracksCount(0);
-
+            
             const tracksForSong = tracks.filter(t => t.songId === activeSongId);
             if(tracksForSong.length === 0) return;
             
@@ -254,7 +252,6 @@ const DawPage = () => {
             tracksForSong.forEach(t => newLoadingSet.add(t.id));
             setLoadingTracks(newLoadingSet);
             startTimer();
-            setStatus('in-progress');
 
             const loadPromises = tracksForSong.map(async (track) => {
               try {
@@ -274,7 +271,16 @@ const DawPage = () => {
                 player.chain(volume, panner, pitchShift, waveform);
                 pitchShift.connect(eqNodesRef.current[0]);
 
+                await Tone.loaded();
+
                 trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+
+                setLoadingTracks(prev => {
+                  const next = new Set(prev);
+                  next.delete(track.id);
+                  return next;
+                });
+
               } catch(e) {
                 console.error(`Error processing track ${track.name}:`, e);
                 toast({
@@ -282,7 +288,6 @@ const DawPage = () => {
                     title: 'Error de Carga de Pista',
                     description: `No se pudo cargar la pista "${track.name}".`
                 });
-                // Remove from loading set on error
                 setLoadingTracks(prev => {
                   const next = new Set(prev);
                   next.delete(track.id);
@@ -292,28 +297,27 @@ const DawPage = () => {
             });
 
             await Promise.all(loadPromises);
-
-            try {
-                // Tone.loaded() waits for all players to be ready to play.
-                await Tone.loaded();
-                setStatus('success');
-            } catch(e) {
-                console.error("Error loading tracks for Tone.js", e);
-                toast({
-                    variant: "destructive",
-                    title: 'Error de Carga',
-                    description: 'No se pudieron cargar una o más pistas. Revisa la consola.'
-                });
-                setStatus('error');
-            } finally {
-                stopTimer();
-                setLoadingTracks(new Set());
-            }
         };
 
         prepareAudioNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSongId, isOnline]);
+    
+  useEffect(() => {
+    if (loadingTracks.size === 0) {
+      const hasTracks = tracks.filter(t => t.songId === activeSongId).length > 0;
+      if (hasTracks) {
+        setStatus('success');
+        stopTimer();
+      } else {
+        setStatus('idle');
+        stopTimer();
+      }
+    } else {
+        setStatus('in-progress');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingTracks, activeSongId]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -491,7 +495,7 @@ const DawPage = () => {
   };
   
   const totalTracksForCurrentSong = useMemo(() => tracks.filter(t => t.songId === activeSongId).length, [tracks, activeSongId]);
-  const loadingProgress = totalTracksForCurrentSong > 0 ? (loadedTracksCount / totalTracksForCurrentSong) * 100 : 100;
+  const loadingProgress = totalTracksForCurrentSong > 0 ? ((totalTracksForCurrentSong - loadingTracks.size) / totalTracksForCurrentSong) * 100 : 100;
   const showLoadingBar = loadingTracks.size > 0;
 
   return (
