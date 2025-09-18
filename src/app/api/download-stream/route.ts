@@ -2,8 +2,6 @@
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { NextRequest } from "next/server";
 
-let s3Client: S3Client | null = null;
-
 function getRegionFromEndpoint(endpoint: string | undefined): string {
   if (!endpoint) throw new Error("B2_ENDPOINT is not defined.");
   try {
@@ -16,23 +14,16 @@ function getRegionFromEndpoint(endpoint: string | undefined): string {
   }
 }
 
-function getS3Client(): S3Client {
-  if (!s3Client) {
-    if (!process.env.B2_ENDPOINT || !process.env.B2_KEY_ID || !process.env.B2_APPLICATION_KEY) {
-        throw new Error("Missing B2 connection environment variables.");
-    }
-    s3Client = new S3Client({
-      region: getRegionFromEndpoint(process.env.B2_ENDPOINT),
-      endpoint: process.env.B2_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.B2_KEY_ID,
-        secretAccessKey: process.env.B2_APPLICATION_KEY,
-      },
-      forcePathStyle: true,
-    });
-  }
-  return s3Client;
-}
+// Create the client once and reuse it across requests.
+const s3Client: S3Client = new S3Client({
+  region: getRegionFromEndpoint(process.env.B2_ENDPOINT),
+  endpoint: process.env.B2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.B2_KEY_ID!,
+    secretAccessKey: process.env.B2_APPLICATION_KEY!,
+  },
+  forcePathStyle: true,
+});
 
 
 export async function GET(req: NextRequest) {
@@ -49,9 +40,8 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const client = getS3Client();
     const command = new GetObjectCommand(params);
-    const response = await client.send(command);
+    const response = await s3Client.send(command);
 
     if (!response.Body) {
       return new Response('File not found or empty.', { status: 404 });

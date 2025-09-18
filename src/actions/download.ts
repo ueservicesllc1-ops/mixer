@@ -3,7 +3,17 @@
 
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
-let s3Client: S3Client | null = null;
+// Create the client once and reuse it.
+const s3Client: S3Client = new S3Client({
+  region: getRegionFromEndpoint(process.env.B2_ENDPOINT),
+  endpoint: process.env.B2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.B2_KEY_ID!,
+    secretAccessKey: process.env.B2_APPLICATION_KEY!,
+  },
+  forcePathStyle: true,
+});
+
 
 function getRegionFromEndpoint(endpoint: string | undefined): string {
   if (!endpoint) throw new Error("B2_ENDPOINT is not defined.");
@@ -17,22 +27,6 @@ function getRegionFromEndpoint(endpoint: string | undefined): string {
   }
 }
 
-function getS3Client(): S3Client {
-  if (!s3Client) {
-    s3Client = new S3Client({
-      region: getRegionFromEndpoint(process.env.B2_ENDPOINT),
-      endpoint: process.env.B2_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.B2_KEY_ID!,
-        secretAccessKey: process.env.B2_APPLICATION_KEY!,
-      },
-      forcePathStyle: true,
-    });
-  }
-  return s3Client;
-}
-
-
 // Función para obtener un archivo de B2 como Data URI
 export async function getB2FileAsDataURI(fileKey: string): Promise<{ success: boolean, dataUri?: string, error?: string }> {
   const params = {
@@ -41,9 +35,8 @@ export async function getB2FileAsDataURI(fileKey: string): Promise<{ success: bo
   };
 
   try {
-    const client = getS3Client();
     const command = new GetObjectCommand(params);
-    const response = await client.send(command);
+    const response = await s3Client.send(command);
 
     if (!response.Body) {
       throw new Error('No body in S3 response.');
