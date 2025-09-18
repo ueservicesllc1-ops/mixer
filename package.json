@@ -9,8 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "electron": "wait-on http://localhost:3000 && electron .",
-    "desktop:dev": "concurrently \"npm:dev\" \"npm:electron\"",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:dev": "concurrently \"npm:dev\" \"npm:electron\""
   },
   "main": "electron.js",
   "dependencies": {
@@ -73,27 +72,5 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
     "wait-on": "^7.2.0"
-  },
-  "build": {
-    "appId": "com.multitrackmixer.app",
-    "productName": "Multitrack Mixer",
-    "files": [
-      "out/**/*",
-      "electron.js",
-      "package.json"
-    ],
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage"
-    },
-    "mac": {
-      "target": "dmg"
-    }
   }
 }
