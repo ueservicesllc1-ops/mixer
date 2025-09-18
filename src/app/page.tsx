@@ -12,8 +12,6 @@ import LyricsDisplay from '@/components/LyricsDisplay';
 import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
-import { blobToDataURI } from '@/lib/utils';
-import { getB2FileAsDataURI } from '@/actions/download';
 import { useToast } from '@/components/ui/use-toast';
 import { useB2Connection } from '@/contexts/B2ConnectionContext';
 
@@ -108,7 +106,6 @@ const DawPage = () => {
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
             
-            // Correct connection chain: EQ -> Master Volume -> Master Meter -> Destination
             Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
             
             eqNodesRef.current = eqChain;
@@ -128,6 +125,8 @@ const DawPage = () => {
     const newDb = masterVolume > 0 ? (masterVolume / 100) * 40 - 40 : -Infinity;
     masterVolumeNodeRef.current.volume.value = newDb;
   }, [masterVolume]);
+
+  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
 
   useEffect(() => {
     if (!toneRef.current || eqNodesRef.current.length === 0) return;
@@ -239,12 +238,10 @@ const DawPage = () => {
 
             const loadPromises = tracksForSong.map(async (track) => {
               try {
-                const { success, dataUri, error } = await getB2FileAsDataURI(track.fileKey);
-                if (!success || !dataUri) {
-                  throw new Error(error || `Failed to get data URI for ${track.name}`);
-                }
-
-                const player = new Tone.Player(dataUri);
+                // Point to our new streaming endpoint
+                const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                
+                const player = new Tone.Player(streamingUrl);
                 player.loop = true;
 
                 const volume = new Tone.Volume(0);
@@ -291,13 +288,11 @@ const DawPage = () => {
     if (loadingTracks.size === 0) {
       const hasTracks = tracks.filter(t => t.songId === activeSongId).length > 0;
       if (hasTracks) {
-        // Calculate max duration once all tracks are loaded
         const maxDuration = Math.max(0, ...Object.values(trackNodesRef.current).map(node => node.player.buffer.duration));
         setDuration(maxDuration);
         setStatus('success');
         stopTimer();
       } else {
-        // No tracks for the song, so we are idle.
         setDuration(0);
         setStatus('idle');
         stopTimer();
@@ -306,7 +301,7 @@ const DawPage = () => {
         setStatus('in-progress');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingTracks, activeSongId]);
+  }, [loadingTracks, activeSongId, songs]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -468,8 +463,6 @@ const DawPage = () => {
 
   const handleMasterVolumeChange = (newVol: number) => setMasterVolume(newVol);
   
-  const handleEqReset = () => setEqBands([50, 50, 50, 50, 50]);
-
   const handleEqChange = (bandIndex: number, newValue: number) => {
     setEqBands(prevBands => {
       const newBands = [...prevBands];
@@ -590,4 +583,3 @@ const DawPage = () => {
 };
 
 export default DawPage;
-
