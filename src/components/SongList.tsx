@@ -26,6 +26,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 
 interface SongListProps {
@@ -150,18 +151,15 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     }
   }, [initialSetlist]);
 
-  // When a song starts loading, set the loading ID. When it finishes, clear it.
+  // When a song starts loading, set the loading ID.
   useEffect(() => {
-    if (activeSongId) {
+    if (isSongLoading && activeSongId) {
         setLoadingSongId(activeSongId);
+    } else if (!isSongLoading) {
+        setLoadingSongId(null);
     }
-  }, [activeSongId]);
+  }, [isSongLoading, activeSongId]);
 
-  useEffect(() => {
-      if (!isSongLoading && loadingSongId) {
-          setLoadingSongId(null);
-      }
-  }, [isSongLoading, loadingSongId]);
 
   const handleFetchSongs = async () => {
     if (!user) return;
@@ -586,8 +584,14 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
               setIsLibrarySheetOpen(true);
             }}>
                 <PlusCircle className="w-4 h-4" />
-                Añadir Canciones
+                Añadir al Setlist
             </Button>
+            <Link href="/admin" passHref>
+                <Button variant="ghost" size="sm" className="text-muted-foreground gap-2">
+                    <Library className="w-4 h-4" />
+                    Ir a la Biblioteca
+                </Button>
+            </Link>
         </div>
 
       <Sheet open={isLibrarySheetOpen} onOpenChange={setIsLibrarySheetOpen}>
