@@ -179,7 +179,7 @@ const DawPage = () => {
       if (initialSetlist.songs.length > 0) {
         const firstSongId = initialSetlist.songs[0].songId;
         if (firstSongId && !activeSongId) {
-            handleSongSelected(firstSongId);
+            setActiveSongId(firstSongId);
         }
       } else {
         setActiveSongId('');
@@ -220,17 +220,22 @@ const DawPage = () => {
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                    const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
                     const cachedBuffer = await getCachedArrayBuffer(track.fileKey);
 
-                    let buffer: import('tone').ToneAudioBuffer;
+                    let buffer: AudioBuffer;
                     if (cachedBuffer) {
-                        buffer = await Tone.ToneAudioBuffer.fromArrayBuffer(cachedBuffer);
+                        // Cache HIT: Decode ArrayBuffer to AudioBuffer
+                        buffer = await Tone.context.decodeAudioData(cachedBuffer);
                     } else {
-                        buffer = await new Tone.ToneAudioBuffer(streamingUrl);
-                        cacheArrayBuffer(track.fileKey, buffer.toArray()).catch(err => {
+                        // Cache MISS: Stream from URL, get AudioBuffer, then cache as ArrayBuffer
+                        const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                        const tempPlayer = new Tone.Player(streamingUrl);
+                        await tempPlayer.load(streamingUrl);
+                        buffer = tempPlayer.buffer.get()!;
+                        cacheArrayBuffer(track.fileKey, buffer.getChannelData(0).buffer).catch(err => {
                             console.warn("Failed to cache track:", track.fileKey, err);
                         });
+                        tempPlayer.dispose();
                     }
                     
                     const player = new Tone.Player(buffer);
