@@ -83,7 +83,7 @@ const DawPage = () => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.removeEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -108,9 +108,7 @@ const DawPage = () => {
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
             
-            Tone.connectSeries(...eqChain, masterVol);
-            masterVol.connect(masterMeter);
-            masterVol.toDestination();
+            Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
 
             eqNodesRef.current = eqChain;
             masterVolumeNodeRef.current = masterVol;
@@ -247,18 +245,25 @@ const DawPage = () => {
                 node.waveform.dispose();
             });
             trackNodesRef.current = {};
-            setLoadingTracks(new Set());
             setLoadedTracksCount(0);
 
             const tracksForSong = tracks.filter(t => t.songId === activeSongId);
             if(tracksForSong.length === 0) return;
             
             const newLoadingSet = new Set<string>();
-            tracksForSong.forEach(track => {
-                newLoadingSet.add(track.id);
+            tracksForSong.forEach(t => newLoadingSet.add(t.id));
+            setLoadingTracks(newLoadingSet);
+            startTimer();
+            setStatus('in-progress');
 
-                // Pass the public URL directly to Tone.Player for streaming
-                const player = new Tone.Player(track.url);
+            const loadPromises = tracksForSong.map(async (track) => {
+              try {
+                const { success, dataUri, error } = await getB2FileAsDataURI(track.fileKey);
+                if (!success || !dataUri) {
+                  throw new Error(error || `Failed to get data URI for ${track.name}`);
+                }
+
+                const player = new Tone.Player(dataUri);
                 player.loop = true;
 
                 const volume = new Tone.Volume(0);
@@ -270,11 +275,23 @@ const DawPage = () => {
                 pitchShift.connect(eqNodesRef.current[0]);
 
                 trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+              } catch(e) {
+                console.error(`Error processing track ${track.name}:`, e);
+                toast({
+                    variant: "destructive",
+                    title: 'Error de Carga de Pista',
+                    description: `No se pudo cargar la pista "${track.name}".`
+                });
+                // Remove from loading set on error
+                setLoadingTracks(prev => {
+                  const next = new Set(prev);
+                  next.delete(track.id);
+                  return next;
+                });
+              }
             });
 
-            setLoadingTracks(newLoadingSet);
-            startTimer();
-            setStatus('in-progress');
+            await Promise.all(loadPromises);
 
             try {
                 // Tone.loaded() waits for all players to be ready to play.
@@ -572,3 +589,5 @@ const DawPage = () => {
 };
 
 export default DawPage;
+
+    
