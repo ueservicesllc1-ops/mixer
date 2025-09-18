@@ -34,7 +34,7 @@ interface SongListProps {
   onSetlistSelected: (setlist: Setlist | null) => void;
   onSongSelected: (songId: string) => void;
   onSongsFetched: (songs: Song[]) => void;
-  onSongCaching: () => void;
+  onSongAddedToSetlist: () => void;
 }
 
 type SongToRemove = {
@@ -115,7 +115,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, onSongSelecte
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongCaching }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -209,18 +209,17 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
 
-    // Cuando se añade una canción (que es un grupo de pistas),
-    // se añaden todas sus pistas al setlist.
+    onSongAddedToSetlist();
+
     const tracksToAdd: SetlistSong[] = song.tracks.map(track => ({
-      id: `${song.id}_${track.fileKey}`, // Genera un ID único para la pista en el setlist
+      id: `${song.id}_${track.fileKey}`, 
       name: track.name,
       url: track.url,
       fileKey: track.fileKey,
-      songId: song.id, // Referencia a la canción padre
-      songName: song.name, // Nombre de la canción padre
+      songId: song.id, 
+      songName: song.name, 
     }));
 
-    // Prevenir duplicados
     const existingSongIds = new Set(selectedSetlist.songs.map(s => s.songId));
     if (existingSongIds.has(song.id)) {
         toast({
@@ -231,9 +230,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         return;
     }
     
-    onSongCaching();
-
-    // Iterar y añadir cada pista individualmente
     let allAdded = true;
     for (const track of tracksToAdd) {
         const result = await addSongToSetlist(selectedSetlist.id, track);

@@ -70,7 +70,6 @@ const DawPage = () => {
   
   const [isYouTubePlayerOpen, setIsYouTubePlayerOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
-  const [isCachingSong, setIsCachingSong] = useState(false);
 
   const { toast } = useToast();
   
@@ -210,8 +209,6 @@ const DawPage = () => {
         if (initialSetlist.songs.length > 0 && !activeSongId) {
             const firstSongId = initialSetlist.songs[0].songId;
             if (firstSongId) {
-                // No llamar a handleSongSelected directamente para evitar bucles.
-                // Simplemente establecemos el ID. El resto de efectos reaccionarán.
                 setActiveSongId(firstSongId);
             }
         }
@@ -227,6 +224,7 @@ const DawPage = () => {
                 return;
             }
 
+            setIsPreparingPlay(true);
             await initAudio();
             const Tone = toneRef.current;
             if (!Tone || eqNodesRef.current.length === 0) return;
@@ -243,6 +241,7 @@ const DawPage = () => {
             const tracksForSong = tracks.filter(t => t.songId === activeSongId);
             if(tracksForSong.length === 0) {
               setDuration(0);
+              setIsPreparingPlay(false);
               return;
             }
             
@@ -255,12 +254,11 @@ const DawPage = () => {
                     }
 
                     const player = new Tone.Player(downloadResult.dataUri);
-                    await Tone.loaded(); // Wait for the player to be ready
+                    await Tone.loaded(); 
                     
                     const playerDuration = player.buffer.duration;
                     if (playerDuration > maxDuration) {
                         maxDuration = playerDuration;
-                        setDuration(maxDuration);
                     }
                     player.loop = true;
 
@@ -269,10 +267,9 @@ const DawPage = () => {
                     const panner = new Tone.Panner(0);
                     const waveform = new Tone.Waveform(256);
                     
-                    player.chain(volume, panner, pitchShift, waveform);
-                    
-                    // Correctly connect the end of the track chain to the master effects chain
+                    player.chain(volume, panner, pitchShift);
                     pitchShift.connect(eqNodesRef.current[0]);
+                    volume.connect(waveform);
 
                     trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
 
@@ -287,6 +284,8 @@ const DawPage = () => {
             });
 
             await Promise.allSettled(loadPromises);
+            setDuration(maxDuration);
+            setIsPreparingPlay(false);
         };
 
         prepareAudioNodes();
@@ -400,7 +399,6 @@ const DawPage = () => {
     const Tone = toneRef.current;
     if (!Tone || !activeSongId) return;
     
-    setIsPreparingPlay(true);
     await initAudio();
     if (Tone.context.state === 'suspended') await Tone.context.resume();
     
@@ -420,8 +418,6 @@ const DawPage = () => {
     } catch(err) {
         console.error("Error during playback preparation:", err);
         toast({ variant: "destructive", title: "Error de Reproducción", description: "No se pudieron cargar todas las pistas." });
-    } finally {
-        setIsPreparingPlay(false);
     }
   }, [activeSongId, initAudio, toast]);
 
@@ -482,15 +478,9 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
-  const handleSongCaching = async () => {
-    setIsCachingSong(true);
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Espera 5 segundos
-    setIsCachingSong(false);
-  };
-
   return (
     <>
-    <JudithLoader isVisible={isCachingSong} />
+    <JudithLoader isVisible={isPreparingPlay} />
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
       <div className="col-span-2 row-start-1">
         <Header 
@@ -502,7 +492,7 @@ const DawPage = () => {
             currentTime={currentTime}
             duration={duration}
             onSeek={handleSeek}
-            isReadyToPlay={!!activeSong}
+            isReadyToPlay={!!activeSong && !isPreparingPlay}
             fadeOutDuration={fadeOutDuration}
             onFadeOutDurationChange={setFadeOutDuration}
             isPanVisible={isPanVisible}
@@ -563,7 +553,7 @@ const DawPage = () => {
             onSetlistSelected={handleSetlistSelected}
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
-            onSongCaching={handleSongCaching}
+            onSongAddedToSetlist={() => {}}
         />
         <TonicPad />
       </div>
