@@ -42,6 +42,7 @@ const DawPage = () => {
   const [songSyncedLyrics, setSongSyncedLyrics] = useState<LyricsSyncOutput | null>(null);
   const [songYoutubeUrl, setSongYoutubeUrl] = useState<string | null>(null);
   const [songSyncOffset, setSongSyncOffset] = useState<number>(0);
+  const [duration, setDuration] = useState(0);
 
   const activeSong = useMemo(() => songs.find(s => s.id === activeSongId), [songs, activeSongId]);
   const audioContextStarted = useRef(false);
@@ -54,7 +55,6 @@ const DawPage = () => {
 
 
   const [loadingTracks, setLoadingTracks] = useState(new Set<string>());
-  const [loadedTracksCount, setLoadedTracksCount] = useState(0);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -108,6 +108,7 @@ const DawPage = () => {
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
             
+            // Correct connection chain: EQ -> Master Volume -> Master Meter -> Destination
             Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
             
             eqNodesRef.current = eqChain;
@@ -153,6 +154,7 @@ const DawPage = () => {
       });
   }, [tracks, activeSongId]);
 
+
   const activeTracksRef = useRef(activeTracks);
   useEffect(() => {
       activeTracksRef.current = activeTracks;
@@ -168,51 +170,7 @@ const DawPage = () => {
     };
     fetchLastSetlist();
   }, []);
-
-  const handleSongSelected = useCallback((songId: string) => {
-      if (songId === activeSongId) return;
-      const Tone = toneRef.current;
-      if (Tone) {
-          Tone.Transport.stop();
-          Object.values(trackNodesRef.current).forEach(node => {
-              if (node.player.state === 'started') node.player.stop();
-              node.player.unsync();
-          });
-      }
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setActiveSongId(songId);
-      setPlaybackRate(1);
-      setPitch(0);
-  }, [activeSongId]);
-
-  useEffect(() => {
-    if (initialSetlist && initialSetlist.songs) {
-      setTracks(initialSetlist.songs);
-      if (initialSetlist.songs.length > 0) {
-        const firstSongId = initialSetlist.songs[0].songId;
-        if (firstSongId) {
-            handleSongSelected(firstSongId);
-        }
-      } else {
-        setActiveSongId(null);
-        setSongStructure(null);
-        setSongLyrics(null);
-        setSongSyncedLyrics(null);
-        setSongYoutubeUrl(null);
-        setSongSyncOffset(0);
-      }
-    } else {
-      setTracks([]);
-      setActiveSongId(null);
-      setSongStructure(null);
-      setSongLyrics(null);
-      setSongSyncedLyrics(null);
-      setSongYoutubeUrl(null);
-      setSongSyncOffset(0);
-    }
-  }, [initialSetlist, handleSongSelected]);
-
+  
   const stopAllTracks = useCallback(() => {
     const Tone = toneRef.current;
     if (!Tone) return;
@@ -225,10 +183,36 @@ const DawPage = () => {
     setCurrentTime(0);
   }, []);
 
-    useEffect(() => {
+  const handleSongSelected = useCallback((songId: string) => {
+      if (songId === activeSongId) return;
+      stopAllTracks();
+      setActiveSongId(songId);
+      setPlaybackRate(1);
+      setPitch(0);
+      setDuration(0);
+  }, [activeSongId, stopAllTracks]);
+
+  useEffect(() => {
+    if (initialSetlist && initialSetlist.songs) {
+      setTracks(initialSetlist.songs);
+      if (initialSetlist.songs.length > 0) {
+        const firstSongId = initialSetlist.songs[0].songId;
+        if (firstSongId && firstSongId !== activeSongId) {
+            handleSongSelected(firstSongId);
+        }
+      } else {
+        handleSongSelected('');
+      }
+    } else {
+      handleSongSelected('');
+    }
+  }, [initialSetlist, handleSongSelected, activeSongId]);
+
+  useEffect(() => {
         const prepareAudioNodes = async () => {
             if (!activeSongId) {
                 stopAllTracks();
+                setDuration(0);
                 return;
             }
 
@@ -271,9 +255,9 @@ const DawPage = () => {
                 player.chain(volume, panner, pitchShift, waveform);
                 pitchShift.connect(eqNodesRef.current[0]);
 
-                await Tone.loaded();
-
                 trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+                
+                await Tone.loaded();
 
                 setLoadingTracks(prev => {
                   const next = new Set(prev);
@@ -296,7 +280,7 @@ const DawPage = () => {
               }
             });
 
-            await Promise.all(loadPromises);
+            await Promise.allSettled(loadPromises);
         };
 
         prepareAudioNodes();
@@ -307,9 +291,14 @@ const DawPage = () => {
     if (loadingTracks.size === 0) {
       const hasTracks = tracks.filter(t => t.songId === activeSongId).length > 0;
       if (hasTracks) {
+        // Calculate max duration once all tracks are loaded
+        const maxDuration = Math.max(0, ...Object.values(trackNodesRef.current).map(node => node.player.buffer.duration));
+        setDuration(maxDuration);
         setStatus('success');
         stopTimer();
       } else {
+        // No tracks for the song, so we are idle.
+        setDuration(0);
         setStatus('idle');
         stopTimer();
       }
@@ -327,6 +316,12 @@ const DawPage = () => {
         setSongSyncedLyrics(currentSong?.syncedLyrics || null);
         setSongYoutubeUrl(currentSong?.youtubeUrl || null);
         setSongSyncOffset(currentSong?.syncOffset || 0);
+    } else {
+        setSongStructure(null);
+        setSongLyrics(null);
+        setSongSyncedLyrics(null);
+        setSongYoutubeUrl(null);
+        setSongSyncOffset(0);
     }
   }, [activeSongId, songs]);
 
@@ -408,12 +403,16 @@ const DawPage = () => {
   
    useEffect(() => {
       const Tone = toneRef.current;
-      if (!Tone || !activeSong) return;
+      if (!Tone || !activeSong?.id) return;
+      
+      const songToUse = songs.find(s => s.id === activeSong.id);
+      if (!songToUse) return;
+
       Object.values(trackNodesRef.current).forEach(({ player }) => {
         if (player) player.playbackRate = playbackRate;
       });
-      Tone.Transport.bpm.value = activeSong.tempo * playbackRate;
-  }, [playbackRate, activeSong]);
+      Tone.Transport.bpm.value = songToUse.tempo * playbackRate;
+  }, [playbackRate, activeSong, songs]);
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
@@ -439,8 +438,6 @@ const DawPage = () => {
     Tone.Transport.pause();
     setIsPlaying(false);
   }, []);
-
-  const handleStop = useCallback(() => stopAllTracks(), [stopAllTracks]);
 
   const handleMuteToggle = (trackId: string) => {
     setMutedTracks(prev => prev.includes(trackId) ? prev.filter(id => id !== trackId) : [...prev, trackId]);
@@ -505,9 +502,9 @@ const DawPage = () => {
             isPlaying={isPlaying}
             onPlay={handlePlay}
             onPause={handlePause}
-            onStop={handleStop}
+            onStop={stopAllTracks}
             currentTime={currentTime}
-            duration={activeSong?.tracks.length ? (trackNodesRef.current[activeTracks[0]?.id]?.player.buffer.duration || 0) : 0}
+            duration={duration}
             onSeek={handleSeek}
             isReadyToPlay={loadingTracks.size === 0 && !!activeSong}
             loadingProgress={loadingProgress}
@@ -594,4 +591,3 @@ const DawPage = () => {
 
 export default DawPage;
 
-    
