@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Button } from './ui/button';
-import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff } from 'lucide-react';
+import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { blobToDataURI } from '@/lib/utils';
 import EditSongDialog from './EditSongDialog';
+import { cacheArrayBuffer, getCachedArrayBuffer } from '@/lib/audiocache';
 
 
 interface SongListProps {
@@ -60,6 +61,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [isDeleting, setIsDeleting] = useState(false);
   const [analyzingSongId, setAnalyzingSongId] = useState<string | null>(null);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
+  const [cachingSongs, setCachingSongs] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
 
@@ -130,6 +132,46 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     setSongToEdit(null); // Cierra el diálogo de edición
   };
 
+  const preCacheSongTracks = async (song: Song) => {
+    setCachingSongs(prev => ({ ...prev, [song.id]: true }));
+    toast({
+        title: `Preparando "${song.name}"...`,
+        description: 'Descargando pistas en segundo plano.',
+    });
+
+    const cachingPromises = song.tracks.map(async (track) => {
+        try {
+            const isCached = await getCachedArrayBuffer(track.fileKey);
+            if (isCached) return; // Ya está en caché, no hacer nada
+
+            const response = await fetch(`/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`);
+            if (!response.ok) throw new Error(`Fallo al descargar ${track.name}`);
+            const arrayBuffer = await response.arrayBuffer();
+            await cacheArrayBuffer(track.fileKey, arrayBuffer);
+        } catch (error) {
+            console.error(`Error pre-cargando la pista ${track.name}:`, error);
+            throw error; // Propaga el error para que Promise.all lo capture
+        }
+    });
+
+    try {
+        await Promise.all(cachingPromises);
+        toast({
+            title: `¡"${song.name}" está lista!`,
+            description: 'Todas las pistas han sido guardadas en el caché.',
+            action: <CheckCircle className="text-green-500" />
+        });
+    } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'Error de Preparación',
+            description: `No se pudieron guardar todas las pistas de "${song.name}" en el caché.`,
+        });
+    } finally {
+        setCachingSongs(prev => ({ ...prev, [song.id]: false }));
+    }
+  };
+
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
 
@@ -154,6 +196,9 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         });
         return;
     }
+    
+    // Inicia el pre-cacheo en segundo plano SIN esperar a que termine
+    preCacheSongTracks(song);
     
     // Iterar y añadir cada pista individualmente
     let allAdded = true;
@@ -319,6 +364,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
           {librarySongs.map((song) => {
             const hasCuesTrack = song.tracks && song.tracks.some(t => t.name.trim().toUpperCase() === 'CUES');
             const isAnalyzing = analyzingSongId === song.id;
+            const isCaching = cachingSongs[song.id];
 
             return (
                 <div key={song.id} className="flex items-center gap-3 p-2 rounded-md bg-black border border-amber-400/10 hover:border-amber-400/30 group">
@@ -363,8 +409,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                         )}
 
                         {selectedSetlist && (
-                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)}>
-                                <PlusCircle className="w-5 h-5 text-primary" />
+                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={isCaching}>
+                                {isCaching ? <Loader2 className="w-5 h-5 animate-spin"/> : <PlusCircle className="w-5 h-5 text-primary" />}
                             </Button>
                         )}
                     </div>
@@ -435,6 +481,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             <div className="space-y-1 mt-1">
                 {groupedSongs.map((songGroup, index) => {
                     const fullSong = songs.find(s => s.id === songGroup.songId);
+                    const isCaching = cachingSongs[songGroup.songId];
 
                     return (
                         <div 
@@ -468,17 +515,23 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                             <span className="justify-self-center text-foreground font-medium">{fullSong?.key ?? '-'}</span>
                             <span className="justify-self-center text-foreground font-medium">{fullSong?.tempo ?? '--'}</span>
 
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                                onClick={(e) => {
-                                    e.stopPropagation(); 
-                                    setSongToRemoveFromSetlist({ songId: songGroup.songId, songName: songGroup.songName });
-                                }}
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </Button>
+                            <div className="flex justify-center items-center">
+                                {isCaching ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                ) : (
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="w-8 h-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                                        onClick={(e) => {
+                                            e.stopPropagation(); 
+                                            setSongToRemoveFromSetlist({ songId: songGroup.songId, songName: songGroup.songName });
+                                        }}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )
                 })}
