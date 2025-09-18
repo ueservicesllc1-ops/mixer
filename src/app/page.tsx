@@ -111,11 +111,15 @@ const DawPage = () => {
             });
 
             masterMeterRef.current = new Tone.Meter();
+            // This is the master volume node that the slider will control
             const masterVol = Tone.Destination;
             
             if (eqChain.length > 0) {
+              // Connect the EQ chain to the master volume node
               Tone.connectSeries(...eqChain, masterVol);
             }
+            
+            // Connect the master volume to the meter, and the meter to the actual output
             masterVol.connect(masterMeterRef.current);
 
             eqNodesRef.current = eqChain;
