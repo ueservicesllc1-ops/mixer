@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, query, where, doc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, query, where, doc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 export interface Sample {
   id: string;
@@ -80,12 +80,9 @@ export async function saveSample(data: Partial<Sample>): Promise<{ success: bool
       const { id, ...updateData } = dataToSave; // Extraemos el id para no guardarlo en el documento
       await updateDoc(sampleRef, updateData);
       
-      const updatedSample: Sample = {
-          ...(await getDoc(doc(db, 'samples', id))).data(),
-          id: id
-      } as Sample;
+      const updatedSampleDoc = await getDoc(sampleRef);
 
-      return { success: true, sample: processSampleDoc({ id: id, data: () => updatedSample }) };
+      return { success: true, sample: processSampleDoc(updatedSampleDoc) };
     } else {
       // Buscar si ya existe un pad para este group/pad
       const q = query(samplesCollection, where('groupKey', '==', dataToSave.groupKey), where('padKey', '==', dataToSave.padKey));
