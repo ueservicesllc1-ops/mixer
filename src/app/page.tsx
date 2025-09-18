@@ -183,12 +183,11 @@ const DawPage = () => {
             handleSongSelected(firstSongId);
         }
       } else {
-        handleSongSelected('');
+        setActiveSongId('');
       }
     } else {
-      handleSongSelected('');
+      setActiveSongId('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSetlist]);
 
   useEffect(() => {
@@ -222,64 +221,66 @@ const DawPage = () => {
             tracksForSong.forEach(t => newLoadingSet.add(t.id));
             setLoadingTracks(newLoadingSet);
 
-            const loadPromises = tracksForSong.map(async (track) => {
-              try {
-                // Point to our new streaming endpoint
-                const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
-                
-                const player = new Tone.Player(streamingUrl);
-                player.loop = true;
+            const loadPromises = tracksForSong.map((track) => {
+              return new Promise<number>((resolve, reject) => {
+                try {
+                  const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                  
+                  const player = new Tone.Player({
+                    url: streamingUrl,
+                    loop: true,
+                    onload: () => {
+                      setLoadingTracks(prev => {
+                        const next = new Set(prev);
+                        next.delete(track.id);
+                        return next;
+                      });
+                      resolve(player.buffer.duration);
+                    },
+                    onerror: (err) => {
+                      console.error(`Error loading track ${track.name}:`, err);
+                      toast({
+                          variant: "destructive",
+                          title: 'Error de Carga de Pista',
+                          description: `No se pudo cargar la pista "${track.name}".`
+                      });
+                       setLoadingTracks(prev => {
+                        const next = new Set(prev);
+                        next.delete(track.id);
+                        return next;
+                      });
+                      reject(new Error(`Failed to load ${track.name}`));
+                    }
+                  });
 
-                const volume = new Tone.Volume(0);
-                const pitchShift = new Tone.PitchShift({ pitch: pitch });
-                const panner = new Tone.Panner(0);
-                const waveform = new Tone.Waveform(256);
-                
-                player.chain(volume, panner, pitchShift, waveform);
-                pitchShift.connect(eqNodesRef.current[0]);
+                  const volume = new Tone.Volume(0);
+                  const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                  const panner = new Tone.Panner(0);
+                  const waveform = new Tone.Waveform(256);
+                  
+                  player.chain(volume, panner, pitchShift, waveform);
+                  pitchShift.connect(eqNodesRef.current[0]);
 
-                trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
-                
-                await Tone.loaded();
-
-                setLoadingTracks(prev => {
-                  const next = new Set(prev);
-                  next.delete(track.id);
-                  return next;
-                });
-
-              } catch(e) {
-                console.error(`Error processing track ${track.name}:`, e);
-                toast({
-                    variant: "destructive",
-                    title: 'Error de Carga de Pista',
-                    description: `No se pudo cargar la pista "${track.name}".`
-                });
-                setLoadingTracks(prev => {
-                  const next = new Set(prev);
-                  next.delete(track.id);
-                  return next;
-                });
-              }
+                  trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+                  
+                } catch(e) {
+                  console.error(`Error processing track ${track.name}:`, e);
+                  reject(e);
+                }
+              });
             });
 
-            await Promise.allSettled(loadPromises);
+            const durations = await Promise.allSettled(loadPromises);
+            const maxDuration = Math.max(0, ...durations
+                .filter((d): d is PromiseFulfilledResult<number> => d.status === 'fulfilled')
+                .map(d => d.value)
+            );
+            setDuration(maxDuration);
         };
 
         prepareAudioNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSongId]);
-    
-  useEffect(() => {
-    if (loadingTracks.size === 0) {
-      const hasTracks = tracks.filter(t => t.songId === activeSongId).length > 0;
-      if (hasTracks) {
-        const maxDuration = Math.max(0, ...Object.values(trackNodesRef.current).map(node => node.player.buffer.duration));
-        setDuration(maxDuration);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingTracks, activeSongId, songs]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -376,16 +377,16 @@ const DawPage = () => {
   
    useEffect(() => {
       const Tone = toneRef.current;
-      if (!Tone || !activeSong?.id) return;
+      if (!Tone || !activeSongId) return;
       
-      const songToUse = songs.find(s => s.id === activeSong.id);
+      const songToUse = songs.find(s => s.id === activeSongId);
       if (!songToUse) return;
 
       Object.values(trackNodesRef.current).forEach(({ player }) => {
         if (player) player.playbackRate = playbackRate;
       });
       Tone.Transport.bpm.value = songToUse.tempo * playbackRate;
-  }, [playbackRate, activeSong, songs]);
+  }, [playbackRate, activeSongId, songs]);
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
