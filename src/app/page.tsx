@@ -13,6 +13,7 @@ import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
+import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -186,7 +187,7 @@ const DawPage = () => {
     } else {
       setActiveSongId('');
     }
-  }, [initialSetlist, activeSongId, handleSongSelected]);
+  }, [initialSetlist, activeSongId]);
 
   useEffect(() => {
         const prepareAudioNodes = async () => {
@@ -216,51 +217,58 @@ const DawPage = () => {
             }
             
             let maxDuration = 0;
-            const loadPromises = tracksForSong.map((track) => {
-              return new Promise<void>((resolve, reject) => {
+            const loadPromises = tracksForSong.map(async (track) => {
                 try {
-                  const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
-                  
-                  const player = new Tone.Player({
-                    url: streamingUrl,
-                    loop: true,
-                    onload: () => {
-                      const playerDuration = player.buffer.duration;
-                      if (playerDuration > maxDuration) {
-                          maxDuration = playerDuration;
-                      }
-                      setDuration(maxDuration);
-                      resolve();
-                    },
-                    onerror: (err) => {
-                      console.error(`Error loading track ${track.name}:`, err);
-                      toast({
-                          variant: "destructive",
-                          title: 'Error de Carga de Pista',
-                          description: `No se pudo cargar la pista "${track.name}".`
-                      });
-                      reject(new Error(`Failed to load ${track.name}`));
+                    const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
+                    
+                    // 1. Check cache first
+                    const cachedBuffer = await getCachedArrayBuffer(track.fileKey);
+
+                    const player = new Tone.Player();
+                    
+                    if (cachedBuffer) {
+                        // Cache HIT: Load from cached ArrayBuffer
+                        const buffer = await new Tone.ToneAudioBuffer().fromArray(cachedBuffer);
+                        player.buffer = buffer;
+                    } else {
+                        // Cache MISS: Stream from URL and cache it
+                        const buffer = await new Tone.ToneAudioBuffer(streamingUrl);
+                        player.buffer = buffer;
+                        // Don't wait for caching to complete to avoid blocking
+                        cacheArrayBuffer(track.fileKey, buffer.get()!).catch(err => {
+                            console.warn("Failed to cache track:", track.fileKey, err);
+                        });
                     }
-                  });
+                    
+                    player.loop = true;
+                    
+                    const playerDuration = player.buffer.duration;
+                    if (playerDuration > maxDuration) {
+                        maxDuration = playerDuration;
+                    }
 
-                  const volume = new Tone.Volume(0);
-                  const pitchShift = new Tone.PitchShift({ pitch: pitch });
-                  const panner = new Tone.Panner(0);
-                  const waveform = new Tone.Waveform(256);
-                  
-                  player.chain(volume, panner, pitchShift, waveform);
-                  pitchShift.connect(eqNodesRef.current[0]);
+                    const volume = new Tone.Volume(0);
+                    const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                    const panner = new Tone.Panner(0);
+                    const waveform = new Tone.Waveform(256);
+                    
+                    player.chain(volume, panner, pitchShift, waveform);
+                    pitchShift.connect(eqNodesRef.current[0]);
 
-                  trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
-                  
-                } catch(e) {
-                  console.error(`Error processing track ${track.name}:`, e);
-                  reject(e);
+                    trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+
+                } catch (e) {
+                    console.error(`Error processing track ${track.name}:`, e);
+                    toast({
+                        variant: "destructive",
+                        title: 'Error de Carga de Pista',
+                        description: `No se pudo cargar la pista "${track.name}".`
+                    });
                 }
-              });
             });
 
             await Promise.allSettled(loadPromises);
+            setDuration(maxDuration);
         };
 
         prepareAudioNodes();
