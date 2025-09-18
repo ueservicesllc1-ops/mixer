@@ -69,8 +69,8 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
             )}
             onClick={() => onSongSelected(songGroup.songId)}
         >
-             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none absolute -left-4 top-0 bottom-0 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                <GripVertical className="w-4 h-4 text-muted-foreground" />
+             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none absolute -left-4 top-0 bottom-0 w-6 opacity-50 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="w-4 h-4 text-neutral-400" />
              </div>
 
             <span className="justify-self-center text-muted-foreground text-[10px] font-mono">{index + 1}</span>
