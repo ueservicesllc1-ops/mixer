@@ -13,7 +13,7 @@ import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
-import { useB2Connection } from '@/contexts/B2ConnectionContext';
+import { B2ConnectionProvider, useB2Connection } from '@/contexts/B2ConnectionContext';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -28,7 +28,7 @@ type TrackNodes = Record<string, {
 }>;
 
 
-const DawPage = () => {
+const DawPageContent = () => {
   const [tracks, setTracks] = useState<SetlistSong[]>([]);
   const [soloTracks, setSoloTracks] = useState<string[]>([]);
   const [mutedTracks, setMutedTracks] = useState<string[]>([]);
@@ -579,6 +579,14 @@ const DawPage = () => {
         lyrics={songLyrics}
       />
     </div>
+  );
+};
+
+const DawPage = () => {
+  return (
+    <B2ConnectionProvider>
+      <DawPageContent />
+    </B2ConnectionProvider>
   );
 };
 
