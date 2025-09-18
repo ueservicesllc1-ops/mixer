@@ -134,10 +134,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
   const preCacheSongTracks = async (song: Song) => {
     setCachingSongs(prev => ({ ...prev, [song.id]: true }));
-    toast({
-        title: `Preparando "${song.name}"...`,
-        description: 'Descargando pistas en segundo plano.',
-    });
 
     const cachingPromises = song.tracks.map(async (track) => {
         try {
