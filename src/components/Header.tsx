@@ -24,8 +24,6 @@ interface HeaderProps {
   onSeek?: (position: number) => void;
   currentTime?: number;
   duration?: number;
-  loadingProgress?: number;
-  showLoadingBar?: boolean;
   isReadyToPlay?: boolean;
   songStructure?: SongStructure | null;
   fadeOutDuration: number;
@@ -53,8 +51,6 @@ const Header: React.FC<HeaderProps> = ({
   onSeek,
   currentTime = 0,
   duration = 0,
-  loadingProgress,
-  showLoadingBar,
   isReadyToPlay,
   songStructure,
   fadeOutDuration,
@@ -176,15 +172,6 @@ const Header: React.FC<HeaderProps> = ({
       
       <Timeline currentTime={currentTime} duration={duration} onSeek={onSeek} structure={songStructure} isReady={!!isReadyToPlay} />
 
-      {showLoadingBar && (
-        <div className="flex items-center gap-3 px-2 pt-2">
-            <DownloadCloud className="w-5 h-5 text-yellow-400 animate-pulse" />
-            <div className="flex-grow">
-                 <Progress value={loadingProgress} className="h-2" indicatorClassName="bg-yellow-500" />
-            </div>
-            <span className="text-xs text-yellow-400 font-mono w-28 text-right">{Math.round(loadingProgress || 0)}%</span>
-        </div>
-      )}
     </header>
   );
 };

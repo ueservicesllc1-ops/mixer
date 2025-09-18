@@ -50,9 +50,6 @@ const DawPage = () => {
   const masterMeterRef = useRef<import('tone').Meter | null>(null);
   const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
 
-
-  const [loadingTracks, setLoadingTracks] = useState(new Set<string>());
-  
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -179,7 +176,8 @@ const DawPage = () => {
       setTracks(initialSetlist.songs);
       if (initialSetlist.songs.length > 0) {
         const firstSongId = initialSetlist.songs[0].songId;
-        if (firstSongId && firstSongId !== activeSongId) {
+        // Solo selecciona automáticamente si no hay una canción activa
+        if (firstSongId && !activeSongId) {
             handleSongSelected(firstSongId);
         }
       } else {
@@ -188,6 +186,7 @@ const DawPage = () => {
     } else {
       setActiveSongId('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSetlist]);
 
   useEffect(() => {
@@ -217,12 +216,9 @@ const DawPage = () => {
               return;
             }
             
-            const newLoadingSet = new Set<string>();
-            tracksForSong.forEach(t => newLoadingSet.add(t.id));
-            setLoadingTracks(newLoadingSet);
-
+            let maxDuration = 0;
             const loadPromises = tracksForSong.map((track) => {
-              return new Promise<number>((resolve, reject) => {
+              return new Promise<void>((resolve, reject) => {
                 try {
                   const streamingUrl = `/api/download-stream?fileKey=${encodeURIComponent(track.fileKey)}`;
                   
@@ -230,12 +226,12 @@ const DawPage = () => {
                     url: streamingUrl,
                     loop: true,
                     onload: () => {
-                      setLoadingTracks(prev => {
-                        const next = new Set(prev);
-                        next.delete(track.id);
-                        return next;
-                      });
-                      resolve(player.buffer.duration);
+                      const playerDuration = player.buffer.duration;
+                      if (playerDuration > maxDuration) {
+                          maxDuration = playerDuration;
+                      }
+                      setDuration(maxDuration);
+                      resolve();
                     },
                     onerror: (err) => {
                       console.error(`Error loading track ${track.name}:`, err);
@@ -243,11 +239,6 @@ const DawPage = () => {
                           variant: "destructive",
                           title: 'Error de Carga de Pista',
                           description: `No se pudo cargar la pista "${track.name}".`
-                      });
-                       setLoadingTracks(prev => {
-                        const next = new Set(prev);
-                        next.delete(track.id);
-                        return next;
                       });
                       reject(new Error(`Failed to load ${track.name}`));
                     }
@@ -270,12 +261,7 @@ const DawPage = () => {
               });
             });
 
-            const durations = await Promise.allSettled(loadPromises);
-            const maxDuration = Math.max(0, ...durations
-                .filter((d): d is PromiseFulfilledResult<number> => d.status === 'fulfilled')
-                .map(d => d.value)
-            );
-            setDuration(maxDuration);
+            await Promise.allSettled(loadPromises);
         };
 
         prepareAudioNodes();
@@ -390,7 +376,7 @@ const DawPage = () => {
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
-    if (!Tone || loadingTracks.size > 0 || !activeSongId) return;
+    if (!Tone || !activeSongId) return;
     await initAudio();
     if (Tone.context.state === 'suspended') await Tone.context.resume();
     if (Tone.Transport.state !== 'started') {
@@ -404,7 +390,7 @@ const DawPage = () => {
       Tone.Transport.start();
       setIsPlaying(true);
     }
-  }, [loadingTracks.size, activeSongId, initAudio]);
+  }, [activeSongId, initAudio]);
 
   const handlePause = useCallback(() => {
     const Tone = toneRef.current;
@@ -463,9 +449,6 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
-  const totalTracksForCurrentSong = useMemo(() => tracks.filter(t => t.songId === activeSongId).length, [tracks, activeSongId]);
-  const loadingProgress = totalTracksForCurrentSong > 0 ? ((totalTracksForCurrentSong - loadingTracks.size) / totalTracksForCurrentSong) * 100 : 100;
-  const showLoadingBar = loadingTracks.size > 0;
 
   return (
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
@@ -478,9 +461,7 @@ const DawPage = () => {
             currentTime={currentTime}
             duration={duration}
             onSeek={handleSeek}
-            isReadyToPlay={loadingTracks.size === 0 && !!activeSong}
-            loadingProgress={loadingProgress}
-            showLoadingBar={showLoadingBar}
+            isReadyToPlay={!!activeSong}
             fadeOutDuration={fadeOutDuration}
             onFadeOutDurationChange={setFadeOutDuration}
             isPanVisible={isPanVisible}
