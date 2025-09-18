@@ -3,6 +3,11 @@ require('dotenv').config();
 
 const nextConfig: NextConfig = {
   output: 'export',
+  experimental: {
+    allowedDevOrigins: [
+      '6000-firebase-multitrack-mixer3-1758135046186.cluster-wfwbjypkvnfkaqiqzlu3ikwjhe.cloudworkstations.dev',
+    ],
+  },
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,
