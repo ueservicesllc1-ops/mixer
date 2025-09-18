@@ -184,56 +184,57 @@ const AdminPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="container mx-auto p-4 md:p-8">
-        <header className="flex justify-between items-start mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Administrador de Canciones</h1>
-            <p className="text-muted-foreground">Sube, edita y gestiona toda tu biblioteca de canciones aquí.</p>
-          </div>
-           <Link href="/" passHref>
-            <Button variant="outline" className="gap-2">
-              <Home className="w-4 h-4" />
-              Ir al Reproductor
-            </Button>
-          </Link>
-        </header>
-
-        <main>
-          <div className="flex gap-4 mb-8 border-b">
-            <Button 
-                variant="ghost" 
-                onClick={() => setActiveView('library')}
-                className={cn("text-lg pb-3 rounded-none", activeView === 'library' && 'border-b-2 border-primary text-primary')}>
-                <Library className="mr-2 h-5 w-5"/>
-                Biblioteca
-            </Button>
-             <Button 
-                variant="ghost" 
-                onClick={() => setActiveView('upload')}
-                className={cn("text-lg pb-3 rounded-none", activeView === 'upload' && 'border-b-2 border-primary text-primary')}>
-                <UploadCloud className="mr-2 h-5 w-5"/>
-                Subir Canción
-            </Button>
-          </div>
-          
-          {activeView === 'library' && (
-             <div className="max-w-4xl mx-auto">
-                <h2 className="text-2xl font-semibold mb-6">Biblioteca de Canciones</h2>
-                {renderSongLibrary()}
-             </div>
-          )}
-
-          {activeView === 'upload' && (
-             <div className="max-w-3xl mx-auto">
-                <h2 className="text-2xl font-semibold mb-6">Subir Nueva Canción</h2>
-                <UploadSongForm onUploadFinished={() => handleFetchSongs(true)} />
+      <div className="h-screen w-full overflow-y-auto">
+        <div className="container mx-auto p-4 md:p-8">
+            <header className="flex justify-between items-start mb-8">
+            <div>
+                <h1 className="text-3xl font-bold">Administrador de Canciones</h1>
+                <p className="text-muted-foreground">Sube, edita y gestiona toda tu biblioteca de canciones aquí.</p>
             </div>
-          )}
-        </main>
+            <Link href="/" passHref>
+                <Button variant="outline" className="gap-2">
+                <Home className="w-4 h-4" />
+                Ir al Reproductor
+                </Button>
+            </Link>
+            </header>
+
+            <main>
+            <div className="flex gap-4 mb-8 border-b">
+                <Button 
+                    variant="ghost" 
+                    onClick={() => setActiveView('library')}
+                    className={cn("text-lg pb-3 rounded-none", activeView === 'library' && 'border-b-2 border-primary text-primary')}>
+                    <Library className="mr-2 h-5 w-5"/>
+                    Biblioteca
+                </Button>
+                <Button 
+                    variant="ghost" 
+                    onClick={() => setActiveView('upload')}
+                    className={cn("text-lg pb-3 rounded-none", activeView === 'upload' && 'border-b-2 border-primary text-primary')}>
+                    <UploadCloud className="mr-2 h-5 w-5"/>
+                    Subir Canción
+                </Button>
+            </div>
+            
+            {activeView === 'library' && (
+                <div className="max-w-4xl mx-auto">
+                    <h2 className="text-2xl font-semibold mb-6">Biblioteca de Canciones</h2>
+                    {renderSongLibrary()}
+                </div>
+            )}
+
+            {activeView === 'upload' && (
+                <div className="max-w-3xl mx-auto">
+                    <h2 className="text-2xl font-semibold mb-6">Subir Nueva Canción</h2>
+                    <UploadSongForm onUploadFinished={() => handleFetchSongs(true)} />
+                </div>
+            )}
+            </main>
+        </div>
       </div>
     </>
   );
 };
 
 export default AdminPage;
-
