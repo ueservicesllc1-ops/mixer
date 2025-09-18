@@ -26,6 +26,7 @@ import EditSetlistDialog from './EditSetlistDialog';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useAuth } from '@/contexts/AuthContext';
 
 
 interface SongListProps {
@@ -120,6 +121,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
 }
 
 const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched }) => {
+  const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
   const [songsError, setSongsError] = useState<string | null>(null);
@@ -174,12 +176,11 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   }, []);
 
   const handleFetchSetlists = async () => {
+    if (!user) return;
     setIsLoadingSetlists(true);
     setSetlistsError(null);
-    // NOTA: El userId está hardcodeado. Se deberá reemplazar con el del usuario autenticado.
-    const userId = 'user_placeholder_id'; 
     try {
-      const result = await getSetlists(userId);
+      const result = await getSetlists(user.uid);
       if (result.success && result.setlists) {
         setSetlists(result.setlists);
       } else {

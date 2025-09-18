@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { saveSetlist } from '@/actions/setlists';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const setlistFormSchema = z.object({
   name: z.string().min(2, {
@@ -56,6 +57,7 @@ const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCrea
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const form = useForm<SetlistFormValues>({
     resolver: zodResolver(setlistFormSchema),
@@ -66,11 +68,13 @@ const CreateSetlistDialog: React.FC<CreateSetlistDialogProps> = ({ onSetlistCrea
   });
 
   async function onSubmit(data: SetlistFormValues) {
+    if (!user) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Debes iniciar sesión para crear un setlist.' });
+        return;
+    }
     setIsSaving(true);
     try {
-      // NOTA: El userId está hardcodeado. Se deberá reemplazar con el del usuario autenticado.
-      const userId = 'user_placeholder_id'; 
-      const result = await saveSetlist({ ...data, userId });
+      const result = await saveSetlist({ ...data, userId: user.uid });
 
       if (result.success) {
         toast({

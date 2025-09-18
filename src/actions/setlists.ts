@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, Timestamp, where } from 'firebase/firestore';
 import type { Song } from './songs';
 
 export interface NewSetlist {
@@ -81,8 +81,7 @@ export async function updateSetlist(setlistId: string, data: { name: string; dat
 export async function getSetlists(userId: string) {
     try {
         const setlistsCollection = collection(db, 'setlists');
-        // Por ahora se obtienen todos, pero en el futuro se filtrará por userId
-        const q = query(setlistsCollection, orderBy('createdAt', 'desc'));
+        const q = query(setlistsCollection, where('userId', '==', userId), orderBy('createdAt', 'desc'));
         const setlistsSnapshot = await getDocs(q);
         
         const setlists = setlistsSnapshot.docs.map(doc => {
