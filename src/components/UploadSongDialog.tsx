@@ -115,10 +115,14 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
   const handleFilePicker = async () => {
     const useFallback = () => document.getElementById('file-picker-input-fallback')?.click();
     
-    if (!window.showOpenFilePicker) {
+    // Check if running in a cross-origin iframe, which blocks showOpenFilePicker
+    const isCrossOrigin = window.self !== window.top;
+
+    if (isCrossOrigin || !window.showOpenFilePicker) {
         useFallback();
         return;
     }
+
     try {
         const handles = await window.showOpenFilePicker({
             multiple: true,
@@ -145,6 +149,8 @@ const UploadSongDialog: React.FC<UploadSongDialogProps> = ({ onUploadFinished, i
             }
         }
     } catch (err: any) {
+        // Fallback for when the user cancels the picker or another error occurs.
+        // The cross-origin error should be caught by the check above, but this is an extra safeguard.
         if (err.name !== 'AbortError') {
             console.error("Error with File System Access API, using fallback:", err);
             useFallback();
