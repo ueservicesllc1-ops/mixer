@@ -1,11 +1,12 @@
 'use client';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { cn } from '@/lib/utils';
 import { SetlistSong } from '@/actions/setlists';
 import VuMeter from './VuMeter';
 import TempoLed from './TempoLed';
+import { Input } from './ui/input';
 
 interface TrackPadProps {
   track: SetlistSong;
@@ -18,7 +19,11 @@ interface TrackPadProps {
   onVolumeChange: (volume: number) => void;
   onSoloToggle: () => void;
   onMuteToggle: () => void;
+  localName: string | undefined;
+  onNameChange: (newName: string) => void;
 }
+
+const LONG_PRESS_DURATION = 2000; // 2 segundos
 
 const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   track,
@@ -30,26 +35,95 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   isPlaying,
   onVolumeChange,
   onSoloToggle,
-  onMuteToggle
+  onMuteToggle,
+  localName,
+  onNameChange
 }) => {
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [inputValue, setInputValue] = useState(localName || track.name);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setInputValue(localName || track.name);
+  }, [localName, track.name]);
+
+  useEffect(() => {
+    if (isEditingName && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditingName]);
+
+  const handleMouseDown = () => {
+    longPressTimerRef.current = setTimeout(() => {
+      setIsEditingName(true);
+    }, LONG_PRESS_DURATION);
+  };
+
+  const handleMouseUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+  };
+
+  const handleNameSubmit = () => {
+    if (inputValue.trim()) {
+      onNameChange(inputValue.trim());
+    } else {
+      setInputValue(localName || track.name); // Revert if empty
+    }
+    setIsEditingName(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleNameSubmit();
+    }
+    if (e.key === 'Escape') {
+      setInputValue(localName || track.name);
+      setIsEditingName(false);
+    }
+  };
+
   const volumeSliderValue = useMemo(() => [volume], [volume]);
-  
   const isClickTrack = useMemo(() => track.name.trim().toUpperCase() === 'CLICK', [track.name]);
 
   const vuMeterLevel = useMemo(() => {
-    // El nivel de vuLevel viene en dB (-Infinity a ~0).
-    // Lo mapeamos a un porcentaje (0-100) para el vúmetro.
-    // Un rango típico es de -48dB a 0dB.
     const level = Math.max(0, (vuLevel + 48) / 48) * 100;
-    return Math.min(level, 100); // Asegurarse de que no pase de 100
+    return Math.min(level, 100);
   }, [vuLevel]);
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="w-full text-center bg-black/80 border border-blue-500/20 rounded-md px-1 py-1 h-8 flex items-center justify-center">
-        <span className="font-mono text-sm text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)] truncate block w-full">
-            {track.name}
-        </span>
+      <div 
+        className="w-full text-center bg-black/80 border border-blue-500/20 rounded-md px-1 py-1 h-8 flex items-center justify-center cursor-pointer select-none"
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleMouseDown}
+        onTouchEnd={handleMouseUp}
+      >
+        {isEditingName ? (
+          <Input
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={handleNameSubmit}
+            onKeyDown={handleKeyDown}
+            className="w-full h-full p-0 m-0 bg-transparent border-none text-center font-mono text-sm text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)] focus:ring-0 focus:outline-none"
+          />
+        ) : (
+          <span className="font-mono text-sm text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)] truncate block w-full">
+            {localName || track.name}
+          </span>
+        )}
       </div>
         
       <div className="relative h-52 w-24 rounded-md border border-border/20 bg-black/50 p-2 flex justify-center items-center">
@@ -69,7 +143,6 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
         </div>
       </div>
 
-      {/* Contenedor de Botones */}
       <div className="flex gap-1.5 w-full">
         <Button
           onClick={onMuteToggle}

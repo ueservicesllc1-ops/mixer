@@ -15,6 +15,8 @@ interface MixerGridProps {
   onVolumeChange: (trackId: string, newVolume: number) => void;
   vuLevels: Record<string, number>;
   isPlaying: boolean;
+  localTrackNames: Record<string, string>;
+  onTrackNameChange: (trackId: string, newName: string) => void;
 }
 
 const MixerGrid: React.FC<MixerGridProps> = ({ 
@@ -27,7 +29,9 @@ const MixerGrid: React.FC<MixerGridProps> = ({
   onSoloToggle,
   onVolumeChange,
   vuLevels,
-  isPlaying
+  isPlaying,
+  localTrackNames,
+  onTrackNameChange,
 }) => {
   const isSoloActive = soloTracks.length > 0;
   const tempo = activeSong?.tempo ?? 120;
@@ -52,6 +56,8 @@ const MixerGrid: React.FC<MixerGridProps> = ({
             vuLevel={vuLevel}
             tempo={tempo}
             isPlaying={isPlaying}
+            localName={localTrackNames[track.id]}
+            onNameChange={(newName) => onTrackNameChange(track.id, newName)}
           />
         );
       })}

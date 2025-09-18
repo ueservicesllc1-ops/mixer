@@ -69,6 +69,31 @@ const DawPage = () => {
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
 
   const { toast } = useToast();
+  
+  // State for local track names
+  const [localTrackNames, setLocalTrackNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const storedNames = localStorage.getItem('localTrackNames');
+      if (storedNames) {
+        setLocalTrackNames(JSON.parse(storedNames));
+      }
+    } catch (error) {
+      console.error("Failed to load local track names from localStorage", error);
+    }
+  }, []);
+
+  const handleTrackNameChange = (trackId: string, newName: string) => {
+    const newLocalNames = { ...localTrackNames, [trackId]: newName };
+    setLocalTrackNames(newLocalNames);
+    try {
+      localStorage.setItem('localTrackNames', JSON.stringify(newLocalNames));
+    } catch (error) {
+      console.error("Failed to save local track names to localStorage", error);
+    }
+  };
+
 
   const initAudio = useCallback(async () => {
     if (!toneRef.current) {
@@ -175,17 +200,15 @@ const DawPage = () => {
 
   useEffect(() => {
     if (initialSetlist && initialSetlist.songs) {
-      setTracks(initialSetlist.songs);
-      if (initialSetlist.songs.length > 0) {
-        const firstSongId = initialSetlist.songs[0].songId;
-        if (firstSongId && !activeSongId) {
-            setActiveSongId(firstSongId);
+        setTracks(initialSetlist.songs);
+        if (initialSetlist.songs.length > 0 && !activeSongId) {
+            const firstSongId = initialSetlist.songs[0].songId;
+            if (firstSongId) {
+                // No llamar a handleSongSelected directamente para evitar bucles.
+                // Simplemente establecemos el ID. El resto de efectos reaccionarán.
+                setActiveSongId(firstSongId);
+            }
         }
-      } else {
-        setActiveSongId('');
-      }
-    } else {
-      setActiveSongId('');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSetlist]);
@@ -517,6 +540,8 @@ const DawPage = () => {
               onVolumeChange={handleVolumeChange}
               isPlaying={isPlaying}
               vuLevels={vuLevels}
+              localTrackNames={localTrackNames}
+              onTrackNameChange={handleTrackNameChange}
             />
         ) : (
           <div className="flex justify-center items-center h-full">
