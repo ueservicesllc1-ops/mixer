@@ -1,14 +1,14 @@
 
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Button } from './ui/button';
-import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle } from 'lucide-react';
+import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { getSongs, Song } from '@/actions/songs';
 import CreateSetlistDialog from './CreateSetlistDialog';
-import { getSetlists, Setlist, addSongToSetlist, SetlistSong, removeSongFromSetlist } from '@/actions/setlists';
+import { getSetlists, Setlist, addSongToSetlist, SetlistSong, removeSongFromSetlist, updateSetlistOrder } from '@/actions/setlists';
 import { format } from 'date-fns';
 import { useToast } from './ui/use-toast';
 import {
@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cacheArrayBuffer, getCachedArrayBuffer } from '@/lib/audiocache';
 import EditSetlistDialog from './EditSetlistDialog';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 
 interface SongListProps {
@@ -36,6 +39,84 @@ interface SongListProps {
 type SongToRemove = {
     songId: string;
     songName: string;
+}
+
+interface GroupedSong {
+    songId: string;
+    songName: string;
+    tracks: SetlistSong[];
+}
+
+const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, cachingSongs: Record<string, boolean>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+    
+    const fullSong = songs.find(s => s.id === songGroup.songId);
+    const isCaching = cachingSongs[songGroup.songId];
+
+    return (
+        <div 
+            ref={setNodeRef}
+            style={style}
+            className={cn(
+                "grid grid-cols-[20px_1fr_30px_40px_32px] items-center gap-x-2 rounded-md group cursor-pointer relative",
+                "py-1 px-2",
+                activeSongId === songGroup.songId ? 'bg-primary/20' : 'hover:bg-accent'
+            )}
+            onClick={() => onSongSelected(songGroup.songId)}
+        >
+             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none absolute -left-4 top-0 bottom-0 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="w-4 h-4 text-muted-foreground" />
+             </div>
+
+            <span className="justify-self-center text-muted-foreground text-[10px] font-mono">{index + 1}</span>
+            
+            <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center shrink-0">
+                    {fullSong?.albumImageUrl ? (
+                        <Image 
+                            src={fullSong.albumImageUrl} 
+                            alt={songGroup.songName} 
+                            width={24} 
+                            height={24} 
+                            className="rounded object-cover w-6 h-6"
+                        />
+                    ) : (
+                        <Music2 className="w-3 h-3 text-muted-foreground" />
+                    )}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-semibold text-xs text-foreground truncate">{songGroup.songName}</span>
+                  <span className="text-[10px] text-muted-foreground truncate">{fullSong?.artist}</span>
+                </div>
+            </div>
+
+            <span className="justify-self-center text-muted-foreground font-mono text-[11px]">{fullSong?.key ?? '-'}</span>
+            <span className="justify-self-center text-muted-foreground font-mono text-[11px]">{fullSong?.tempo ?? '--'}</span>
+
+            <div className="flex justify-center items-center">
+                {isCaching ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                ) : (
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="w-7 h-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                        onClick={(e) => {
+                            e.stopPropagation(); 
+                            onRemove(songGroup.songId, songGroup.songName);
+                        }}
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
 }
 
 const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched }) => {
@@ -55,6 +136,10 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [cachingSongs, setCachingSongs] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useEffect(() => {
     if (initialSetlist) {
@@ -302,27 +387,71 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     return <p className="text-muted-foreground text-center">No hay canciones en la biblioteca. Ve a la sección de administrador para subir canciones.</p>;
   };
 
-  const getGroupedSongs = () => {
-    if (!selectedSetlist) return [];
-    const songsInSetlist = selectedSetlist.songs.reduce((acc, track) => {
-        if (track.songId && track.songName) {
-            const songId = track.songId;
-            if (!acc[songId]) {
-                acc[songId] = {
-                    songId: songId,
-                    songName: track.songName,
-                    tracks: []
-                };
+    const getGroupedSongs = (): GroupedSong[] => {
+        if (!selectedSetlist) return [];
+        
+        const songOrder = selectedSetlist.songs.reduce((order, track) => {
+            if (track.songId && !order.includes(track.songId)) {
+                order.push(track.songId);
             }
-            acc[songId].tracks.push(track);
-        }
-        return acc;
-    }, {} as Record<string, { songId: string; songName: string; tracks: SetlistSong[] }>);
+            return order;
+        }, [] as string[]);
+        
+        const songsInSetlist = selectedSetlist.songs.reduce((acc, track) => {
+            if (track.songId && track.songName) {
+                if (!acc[track.songId]) {
+                    acc[track.songId] = {
+                        songId: track.songId,
+                        songName: track.songName,
+                        tracks: []
+                    };
+                }
+                acc[track.songId].tracks.push(track);
+            }
+            return acc;
+        }, {} as Record<string, GroupedSong>);
 
-    return Object.values(songsInSetlist);
-  }
+        return songOrder.map(songId => songsInSetlist[songId]).filter(Boolean);
+    }
 
-  const groupedSongs = getGroupedSongs();
+    const groupedSongs = getGroupedSongs();
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!selectedSetlist || !over || active.id === over.id) return;
+
+        const oldIndex = groupedSongs.findIndex(g => g.songId === active.id);
+        const newIndex = groupedSongs.findIndex(g => g.songId === over.id);
+
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        // Reordenar los grupos de canciones
+        const reorderedGroups = [...groupedSongs];
+        const [movedItem] = reorderedGroups.splice(oldIndex, 1);
+        reorderedGroups.splice(newIndex, 0, movedItem);
+
+        // Aplanar el array de pistas en el nuevo orden
+        const newSongsArray = reorderedGroups.flatMap(group => group.tracks);
+
+        const updatedSetlist = {
+            ...selectedSetlist,
+            songs: newSongsArray,
+        };
+
+        // Actualizar el estado local inmediatamente
+        setSelectedSetlist(updatedSetlist);
+        onSetlistSelected(updatedSetlist);
+
+        // Guardar el nuevo orden en la base de datos en segundo plano
+        updateSetlistOrder(selectedSetlist.id, newSongsArray).catch(err => {
+            toast({
+                variant: 'destructive',
+                title: 'Error de sincronización',
+                description: 'No se pudo guardar el nuevo orden del setlist.',
+            });
+            // Opcional: revertir el estado al original si falla el guardado
+        });
+    }
 
   const renderSetlist = () => {
     if (!selectedSetlist) return null;
@@ -344,7 +473,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             </div>
         );
     }
-
+    
     return (
         <div className="flex flex-col">
             {/* Header */}
@@ -356,67 +485,25 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                 <span />
             </div>
             {/* Song Rows */}
-            <div className="space-y-1 mt-1">
-                {groupedSongs.map((songGroup, index) => {
-                    const fullSong = songs.find(s => s.id === songGroup.songId);
-                    const isCaching = cachingSongs[songGroup.songId];
-
-                    return (
-                        <div 
-                            key={songGroup.songId} 
-                            className={cn(
-                                "grid grid-cols-[20px_1fr_30px_40px_32px] items-center gap-x-2 rounded-md group cursor-pointer",
-                                "py-1.5 px-2",
-                                activeSongId === songGroup.songId ? 'bg-primary/20' : 'hover:bg-accent'
-                            )}
-                            onClick={() => onSongSelected(songGroup.songId)}
-                        >
-                            <span className="justify-self-center text-muted-foreground text-[10px] font-mono">{index + 1}</span>
-                            
-                            <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center shrink-0">
-                                    {fullSong?.albumImageUrl ? (
-                                        <Image 
-                                            src={fullSong.albumImageUrl} 
-                                            alt={songGroup.songName} 
-                                            width={24} 
-                                            height={24} 
-                                            className="rounded object-cover w-6 h-6"
-                                        />
-                                    ) : (
-                                        <Music2 className="w-3 h-3 text-muted-foreground" />
-                                    )}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="font-semibold text-xs text-foreground truncate">{songGroup.songName}</span>
-                                  <span className="text-[10px] text-muted-foreground truncate">{fullSong?.artist}</span>
-                                </div>
-                            </div>
-
-                            <span className="justify-self-center text-muted-foreground font-mono text-[11px]">{fullSong?.key ?? '-'}</span>
-                            <span className="justify-self-center text-muted-foreground font-mono text-[11px]">{fullSong?.tempo ?? '--'}</span>
-
-                            <div className="flex justify-center items-center">
-                                {isCaching ? (
-                                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                ) : (
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="w-7 h-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
-                                        onClick={(e) => {
-                                            e.stopPropagation(); 
-                                            setSongToRemoveFromSetlist({ songId: songGroup.songId, songName: songGroup.songName });
-                                        }}
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={groupedSongs.map(g => g.songId)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-1 mt-1">
+                        {groupedSongs.map((songGroup, index) => (
+                           <SortableSongItem
+                             key={songGroup.songId}
+                             songGroup={songGroup}
+                             index={index}
+                             songs={songs}
+                             activeSongId={activeSongId}
+                             cachingSongs={cachingSongs}
+                             onSongSelected={onSongSelected}
+                             onRemove={(songId, songName) => setSongToRemoveFromSetlist({ songId, songName })}
+                           >
+                           </SortableSongItem>
+                        ))}
+                    </div>
+                </SortableContext>
+            </DndContext>
         </div>
     );
 };

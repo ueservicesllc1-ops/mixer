@@ -138,3 +138,14 @@ export async function removeSongFromSetlist(setlistId: string, song: SetlistSong
     return { success: false, error: (error as Error).message };
   }
 }
+
+export async function updateSetlistOrder(setlistId: string, orderedSongs: SetlistSong[]) {
+  try {
+    const setlistRef = doc(db, 'setlists', setlistId);
+    await updateDoc(setlistRef, { songs: orderedSongs });
+    return { success: true };
+  } catch (error) {
+    console.error(`Error actualizando el orden del setlist ${setlistId}:`, error);
+    return { success: false, error: (error as Error).message };
+  }
+}
