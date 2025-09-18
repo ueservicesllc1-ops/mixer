@@ -113,19 +113,21 @@ const DawPage = () => {
             });
 
             masterMeterRef.current = new Tone.Meter();
-            masterVolumeNodeRef.current = new Tone.Volume().toDestination();
+            masterVolumeNodeRef.current = new Tone.Volume();
             
             if (eqChain.length > 0) {
-              Tone.connectSeries(...eqChain, masterVolumeNodeRef.current);
+                // Conexión en serie: EQ -> Master Volume -> Master Meter -> Destination
+                Tone.connectSeries(...eqChain, masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination);
             } else {
-              masterVolumeNodeRef.current.toDestination();
+                // Conexión sin EQ: Master Volume -> Master Meter -> Destination
+                Tone.connectSeries(masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination);
             }
             
-            masterVolumeNodeRef.current.connect(masterMeterRef.current);
             eqNodesRef.current = eqChain;
         }
     }
   }, []);
+
 
   useEffect(() => {
     initAudio();
@@ -351,7 +353,7 @@ const DawPage = () => {
 
     loadAudioData();
 
-   }, [activeSongId, songs, tracks, isOnline, initAudio, pitch, toast]);
+   }, [activeSongId, songs, tracks, isOnline, initAudio, pitch, toast, activeSong]);
 
   useEffect(() => {
     if (activeSongId) {
