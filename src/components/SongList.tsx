@@ -73,7 +73,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
                 <GripVertical className="w-4 h-4 text-neutral-400" />
              </div>
 
-            <span className="justify-self-center text-muted-foreground text-[10px] font-mono">{index + 1}</span>
+            <span className="justify-self-center text-muted-foreground text-[10px] font-mono">{index + 1}.</span>
             
             <div className="flex items-center gap-2 min-w-0">
                 <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center shrink-0">
