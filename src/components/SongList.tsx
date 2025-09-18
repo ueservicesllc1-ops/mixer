@@ -35,6 +35,7 @@ interface SongListProps {
   onSetlistSelected: (setlist: Setlist | null) => void;
   onSongSelected: (songId: string) => void;
   onSongsFetched: (songs: Song[]) => void;
+  onSongCaching: () => void;
 }
 
 type SongToRemove = {
@@ -48,7 +49,7 @@ interface GroupedSong {
     tracks: SetlistSong[];
 }
 
-const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, cachingSongs: Record<string, boolean>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
+const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, cachingSongs: Record<string, 'caching' | 'cached'>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
 
     const style = {
@@ -57,7 +58,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
     };
     
     const fullSong = songs.find(s => s.id === songGroup.songId);
-    const isCaching = cachingSongs[songGroup.songId];
+    const isCaching = cachingSongs[songGroup.songId] === 'caching';
 
     return (
         <div 
@@ -120,7 +121,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, cachingSongs,
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongCaching }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -135,7 +136,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
-  const [cachingSongs, setCachingSongs] = useState<Record<string, boolean>>({});
+  const [cachingSongs, setCachingSongs] = useState<Record<string, 'caching' | 'cached'>>({});
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -213,7 +214,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
 
   const preCacheSongTracks = async (song: Song) => {
-    setCachingSongs(prev => ({ ...prev, [song.id]: true }));
+    setCachingSongs(prev => ({ ...prev, [song.id]: 'caching' }));
 
     const cachingPromises = song.tracks.map(async (track) => {
         try {
@@ -232,19 +233,18 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
     try {
         await Promise.all(cachingPromises);
-        toast({
-            title: `¡"${song.name}" está lista!`,
-            description: 'Todas las pistas han sido guardadas en el caché.',
-            action: <CheckCircle className="text-green-500" />
-        });
+        setCachingSongs(prev => ({ ...prev, [song.id]: 'cached' }));
     } catch (error) {
         toast({
             variant: 'destructive',
             title: 'Error de Preparación',
             description: `No se pudieron guardar todas las pistas de "${song.name}" en el caché.`,
         });
-    } finally {
-        setCachingSongs(prev => ({ ...prev, [song.id]: false }));
+        setCachingSongs(prev => {
+            const newStatus = { ...prev };
+            delete newStatus[song.id];
+            return newStatus;
+        });
     }
   };
 
@@ -273,7 +273,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
         return;
     }
     
-    // Inicia el pre-cacheo en segundo plano SIN esperar a que termine
+    // Inicia el pre-cacheo y el loader
+    onSongCaching();
     preCacheSongTracks(song);
     
     // Iterar y añadir cada pista individualmente
@@ -364,7 +365,18 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       return (
         <div className="space-y-2">
           {songs.map((song) => {
-            const isCaching = cachingSongs[song.id];
+            const cacheStatus = cachingSongs[song.id];
+
+            const getCacheIcon = () => {
+                switch(cacheStatus) {
+                    case 'caching':
+                        return <Loader2 className="w-5 h-5 animate-spin text-primary" />;
+                    case 'cached':
+                        return <CheckCircle className="w-5 h-5 text-green-500" />;
+                    default:
+                        return <PlusCircle className="w-5 h-5 text-primary" />;
+                }
+            }
 
             return (
                 <div key={song.id} className="flex items-center gap-3 p-2 rounded-md bg-black border border-amber-400/10 hover:border-amber-400/30 group">
@@ -376,8 +388,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                          {selectedSetlist && (
-                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={isCaching}>
-                                {isCaching ? <Loader2 className="w-5 h-5 animate-spin"/> : <PlusCircle className="w-5 h-5 text-primary" />}
+                            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)} disabled={cacheStatus === 'caching'}>
+                                {getCacheIcon()}
                             </Button>
                         )}
                     </div>

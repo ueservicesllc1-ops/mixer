@@ -15,6 +15,7 @@ import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
 import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 import { useAuth } from '@/contexts/AuthContext';
+import JudithLoader from '@/components/JudithLoader';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -69,6 +70,7 @@ const DawPage = () => {
   
   const [isYouTubePlayerOpen, setIsYouTubePlayerOpen] = useState(false);
   const [isTeleprompterOpen, setIsTeleprompterOpen] = useState(false);
+  const [isCachingSong, setIsCachingSong] = useState(false);
 
   const { toast } = useToast();
   
@@ -490,8 +492,16 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
+  const handleSongCaching = () => {
+    setIsCachingSong(true);
+    setTimeout(() => {
+        setIsCachingSong(false);
+    }, 5000); // Countdown duration
+  }
 
   return (
+    <>
+    <JudithLoader isVisible={isCachingSong} />
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
       <div className="col-span-2 row-start-1">
         <Header 
@@ -564,6 +574,7 @@ const DawPage = () => {
             onSetlistSelected={handleSetlistSelected}
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
+            onSongCaching={handleSongCaching}
         />
         <TonicPad />
       </div>
@@ -581,6 +592,7 @@ const DawPage = () => {
         lyrics={songLyrics}
       />
     </div>
+    </>
   );
 };
 
