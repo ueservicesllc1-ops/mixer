@@ -106,11 +106,13 @@ const DawPage = () => {
             const eqChain = eqFrequencies.map((freq) => {
                 return new Tone.Filter(freq, 'peaking', { Q: 1.5 });
             });
-            masterVolumeNodeRef.current = new Tone.Volume();
-            masterMeterRef.current = new Tone.Meter();
-            const masterChain = [...eqChain, masterVolumeNodeRef.current, masterMeterRef.current, Tone.Destination];
+            const masterVol = new Tone.Volume();
+            const masterMeter = new Tone.Meter();
+            const masterChain = [...eqChain, masterVol, masterMeter, Tone.Destination];
             Tone.connectSeries(...masterChain);
             eqNodesRef.current = eqChain;
+            masterVolumeNodeRef.current = masterVol;
+            masterMeterRef.current = masterMeter;
         }
     }
   }, []);
@@ -219,76 +221,93 @@ const DawPage = () => {
   }, []);
 
    useEffect(() => {
-    if (!activeSongId) {
-        stopAllTracks();
-        setLoadingTracks(new Set());
-        setLoadedTracksCount(0);
-        return;
-    }
-    const loadAudioData = async () => {
-        await initAudio();
-        const Tone = toneRef.current;
-        if (!Tone || !eqNodesRef.current.length || !activeSong) return;
-        const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
-        const tracksToLoad = tracksForCurrentSong.filter(setlistTrack => !trackNodesRef.current[setlistTrack.id]);
-        if (tracksToLoad.length === 0) {
-            setLoadingTracks(new Set());
-            setLoadedTracksCount(tracksForCurrentSong.length);
-            return;
-        }
-        setLoadingTracks(new Set(tracksToLoad.map(t => t.id)));
-        setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
-        
-        startTimer();
-        const loadPromises = tracksToLoad.map(async (setlistTrack) => {
-            try {
-                let dataUri: string | undefined;
-                const songDefinition = songs.find(s => s.id === setlistTrack.songId);
-                const trackDefinition = songDefinition?.tracks.find(t => t.fileKey === setlistTrack.fileKey);
-                if (trackDefinition?.handle) {
-                    try {
-                        const file = await trackDefinition.handle.getFile();
-                        dataUri = await blobToDataURI(file);
-                    } catch (e) { console.warn(`Local file handle failed. Fallback to server.`, e); }
-                }
-                if (!dataUri && isOnline) {
-                    const result = await getB2FileAsDataURI(setlistTrack.fileKey);
-                    if (result.success && result.dataUri) {
-                        dataUri = result.dataUri;
-                    } else {
-                        throw new Error(result.error || `Failed to fetch '${setlistTrack.name}'`);
-                    }
-                }
-                if (!dataUri) throw new Error(`Offline and no local file for ${setlistTrack.name}.`);
-                
-                const player = new Tone.Player(dataUri);
-                player.loop = true;
-                const volume = new Tone.Volume(0);
-                const pitchShift = new Tone.PitchShift({ pitch: pitch });
-                const panner = new Tone.Panner(0);
-                const waveform = new Tone.Waveform(256);
-                player.chain(volume, panner, pitchShift, waveform);
-                pitchShift.connect(eqNodesRef.current[0]);
-                trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
-                setLoadedTracksCount(prev => prev + 1);
-            } catch (error) {
-                setStatus('error');
-                console.error(`Error loading track ${setlistTrack.name}:`, error);
-                toast({
-                  variant: "destructive",
-                  title: `Error al cargar pista`,
-                  description: `${setlistTrack.name}: ${(error as Error).message}`,
-                });
-                setLoadingTracks(prev => { const newSet = new Set(prev); newSet.delete(setlistTrack.id); return newSet; });
+        const loadAudioData = async () => {
+            if (!activeSongId) {
+                stopAllTracks();
+                setLoadingTracks(new Set());
+                setLoadedTracksCount(0);
+                return;
             }
-        });
-        await Promise.all(loadPromises);
-        stopTimer();
-        if (loadingTracks.size === 0) setStatus('success');
-        setLoadingTracks(new Set());
-    };
-    loadAudioData();
-   }, [activeSongId, songs, tracks, isOnline, pitch, toast, activeSong, initAudio, startTimer, stopTimer, setStatus]);
+
+            await initAudio();
+            const Tone = toneRef.current;
+            const currentSong = songs.find(s => s.id === activeSongId);
+            if (!Tone || !eqNodesRef.current.length || !currentSong) return;
+
+            const tracksForCurrentSong = tracks.filter(t => t.songId === activeSongId);
+            const tracksToLoad = tracksForCurrentSong.filter(t => !trackNodesRef.current[t.id]);
+
+            if (tracksToLoad.length === 0) {
+                setLoadingTracks(new Set());
+                setLoadedTracksCount(tracksForCurrentSong.length);
+                return;
+            }
+
+            setLoadingTracks(new Set(tracksToLoad.map(t => t.id)));
+            setLoadedTracksCount(tracksForCurrentSong.length - tracksToLoad.length);
+            
+            startTimer();
+            const loadPromises = tracksToLoad.map(async (setlistTrack) => {
+                try {
+                    let dataUri: string | undefined;
+                    const trackDefinition = currentSong.tracks.find(t => t.fileKey === setlistTrack.fileKey);
+
+                    if (trackDefinition?.handle) {
+                        try {
+                            const file = await trackDefinition.handle.getFile();
+                            dataUri = await blobToDataURI(file);
+                        } catch (e) {
+                            console.warn(`Local file handle failed for ${setlistTrack.name}. Fallback to B2.`, e);
+                        }
+                    }
+
+                    if (!dataUri && isOnline) {
+                        const result = await getB2FileAsDataURI(setlistTrack.fileKey);
+                        if (result.success && result.dataUri) {
+                            dataUri = result.dataUri;
+                        } else {
+                            throw new Error(result.error || `Failed to fetch '${setlistTrack.name}'`);
+                        }
+                    }
+
+                    if (!dataUri) throw new Error(`Offline and no local file for ${setlistTrack.name}.`);
+
+                    const player = new Tone.Player(dataUri);
+                    player.loop = true;
+                    const volume = new Tone.Volume(0);
+                    const pitchShift = new Tone.PitchShift({ pitch: pitch });
+                    const panner = new Tone.Panner(0);
+                    const waveform = new Tone.Waveform(256);
+                    player.chain(volume, panner, pitchShift, waveform);
+                    pitchShift.connect(eqNodesRef.current[0]);
+
+                    trackNodesRef.current[setlistTrack.id] = { player, panner, pitchShift, volume, waveform };
+                    
+                    setLoadedTracksCount(prev => prev + 1);
+                } catch (error) {
+                    setStatus('error');
+                    console.error(`Error loading track ${setlistTrack.name}:`, error);
+                    toast({
+                      variant: "destructive",
+                      title: `Error al cargar pista`,
+                      description: `${setlistTrack.name}: ${(error as Error).message}`,
+                    });
+                    setLoadingTracks(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(setlistTrack.id);
+                        return newSet;
+                    });
+                }
+            });
+
+            await Promise.all(loadPromises);
+            stopTimer();
+            setLoadingTracks(new Set()); // Clear loading set after all attempts
+            if (loadingTracks.size === 0) setStatus('success');
+        };
+
+        loadAudioData();
+    }, [activeSongId, songs, tracks, isOnline, pitch, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -559,5 +578,3 @@ const DawPage = () => {
 };
 
 export default DawPage;
-
-    
