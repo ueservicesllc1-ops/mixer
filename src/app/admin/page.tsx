@@ -1,15 +1,19 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Music2, Pencil, ScanSearch, Trash2, Home } from 'lucide-react';
+import { Loader2, Music, Pencil, ScanSearch, Trash2, Home, Library, UploadCloud } from 'lucide-react';
 import { getSongs, Song, deleteSong, reanalyzeSongStructure } from '@/actions/songs';
 import { useToast } from '@/components/ui/use-toast';
-import UploadSongDialog from '@/components/UploadSongDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { blobToDataURI } from '@/lib/utils';
 import EditSongDialog from '@/components/EditSongDialog';
 import Link from 'next/link';
+import UploadSongForm from '@/components/UploadSongForm';
+import { cn } from '@/lib/utils';
+
+type AdminView = 'library' | 'upload';
 
 const AdminPage = () => {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -19,9 +23,10 @@ const AdminPage = () => {
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [analyzingSongId, setAnalyzingSongId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<AdminView>('library');
   const { toast } = useToast();
 
-  const handleFetchSongs = async () => {
+  const handleFetchSongs = async (selectLibraryView: boolean = false) => {
     setIsLoadingSongs(true);
     setSongsError(null);
     try {
@@ -35,6 +40,9 @@ const AdminPage = () => {
       setSongsError('Ocurrió un error al buscar las canciones.');
     } finally {
       setIsLoadingSongs(false);
+      if (selectLibraryView) {
+        setActiveView('library');
+      }
     }
   };
 
@@ -120,22 +128,22 @@ const AdminPage = () => {
             const hasCuesTrack = song.tracks?.some(t => t.name.trim().toUpperCase() === 'CUES');
             const isAnalyzing = analyzingSongId === song.id;
             return (
-              <div key={song.id} className="flex items-center gap-3 p-2 rounded-md bg-card border border-border hover:border-primary/50 group">
-                <Music2 className="w-5 h-5 text-muted-foreground" />
+              <div key={song.id} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:border-primary/50 group">
+                <Music className="w-6 h-6 text-muted-foreground" />
                 <div className="flex-grow">
-                  <p className="font-semibold text-foreground">{song.name}</p>
-                  <p className="text-xs text-muted-foreground">{song.artist}</p>
+                  <p className="font-semibold text-foreground text-base">{song.name}</p>
+                  <p className="text-sm text-muted-foreground">{song.artist}</p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" onClick={() => setSongToEdit(song)}>
+                  <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-primary" onClick={() => setSongToEdit(song)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
                   {hasCuesTrack && (
-                    <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" onClick={() => handleReanalyze(song)} disabled={isAnalyzing}>
+                    <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-primary" onClick={() => handleReanalyze(song)} disabled={isAnalyzing}>
                       {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
                     </Button>
                   )}
-                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" onClick={() => setSongToDelete(song)}>
+                  <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-destructive" onClick={() => setSongToDelete(song)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -177,7 +185,7 @@ const AdminPage = () => {
       </AlertDialog>
 
       <div className="container mx-auto p-4 md:p-8">
-        <header className="flex justify-between items-center mb-8">
+        <header className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-3xl font-bold">Administrador de Canciones</h1>
             <p className="text-muted-foreground">Sube, edita y gestiona toda tu biblioteca de canciones aquí.</p>
@@ -191,13 +199,36 @@ const AdminPage = () => {
         </header>
 
         <main>
-          <div className="bg-card/50 border rounded-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Biblioteca de Canciones</h2>
-              <UploadSongDialog onUploadFinished={handleFetchSongs} />
-            </div>
-            {renderSongLibrary()}
+          <div className="flex gap-4 mb-8 border-b">
+            <Button 
+                variant="ghost" 
+                onClick={() => setActiveView('library')}
+                className={cn("text-lg pb-3 rounded-none", activeView === 'library' && 'border-b-2 border-primary text-primary')}>
+                <Library className="mr-2 h-5 w-5"/>
+                Biblioteca
+            </Button>
+             <Button 
+                variant="ghost" 
+                onClick={() => setActiveView('upload')}
+                className={cn("text-lg pb-3 rounded-none", activeView === 'upload' && 'border-b-2 border-primary text-primary')}>
+                <UploadCloud className="mr-2 h-5 w-5"/>
+                Subir Canción
+            </Button>
           </div>
+          
+          {activeView === 'library' && (
+             <div className="max-w-4xl mx-auto">
+                <h2 className="text-2xl font-semibold mb-6">Biblioteca de Canciones</h2>
+                {renderSongLibrary()}
+             </div>
+          )}
+
+          {activeView === 'upload' && (
+             <div className="max-w-3xl mx-auto">
+                <h2 className="text-2xl font-semibold mb-6">Subir Nueva Canción</h2>
+                <UploadSongForm onUploadFinished={() => handleFetchSongs(true)} />
+            </div>
+          )}
         </main>
       </div>
     </>
@@ -205,3 +236,4 @@ const AdminPage = () => {
 };
 
 export default AdminPage;
+
