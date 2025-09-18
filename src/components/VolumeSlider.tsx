@@ -71,7 +71,7 @@ const VolumeSlider: React.FC<VolumeSliderProps> = ({
                 </div>
                 
                 {/* Volume Fill Bar */}
-                <div className="absolute inset-y-0 left-0 h-full bg-primary/70 pointer-events-none" style={{ width: `${volume}%` }} />
+                <div className="absolute inset-y-0 left-0 h-full bg-blue-500/70 pointer-events-none" style={{ width: `${volume}%` }} />
                 
                 <div className="absolute right-2 top-0 bottom-0 flex items-center w-[calc(100%-1rem)] pointer-events-none">
                     <VuMeter level={vuMeterLevel} orientation="horizontal" />
