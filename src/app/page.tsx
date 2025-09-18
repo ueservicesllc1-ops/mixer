@@ -44,7 +44,7 @@ const DawPage = () => {
   const [songYoutubeUrl, setSongYoutubeUrl] = useState<string | null>(null);
   const [songSyncOffset, setSongSyncOffset] = useState<number>(0);
 
-  const activeSong = songs.find(s => s.id === activeSongId);
+  const activeSong = useMemo(() => songs.find(s => s.id === activeSongId), [songs, activeSongId]);
   const audioContextStarted = useRef(false);
   const trackNodesRef = useRef<TrackNodes>({});
   
@@ -109,8 +109,9 @@ const DawPage = () => {
             const masterVol = new Tone.Volume();
             const masterMeter = new Tone.Meter();
             
-            // Correct chain: EQ -> Master Volume -> Master Meter -> Destination
-            Tone.connectSeries(...eqChain, masterVol, masterMeter, Tone.Destination);
+            Tone.connectSeries(...eqChain, masterVol);
+            masterVol.connect(masterMeter);
+            masterVol.toDestination();
 
             eqNodesRef.current = eqChain;
             masterVolumeNodeRef.current = masterVol;
@@ -314,7 +315,8 @@ const DawPage = () => {
         };
 
         loadAudioData();
-    }, [activeSongId, isOnline, initAudio, stopAllTracks, setStatus, startTimer, stopTimer, toast, pitch, songs, tracks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSongId, isOnline, songs]);
 
   useEffect(() => {
     if (activeSongId) {
@@ -333,6 +335,7 @@ const DawPage = () => {
       newVolumes[track.id] = volumes[track.id] ?? 100;
     });
     setVolumes(newVolumes);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTracks]);
 
   useEffect(() => {
@@ -342,7 +345,7 @@ const DawPage = () => {
         const update = () => {
             setCurrentTime(Tone.Transport.seconds);
             const newVuLevels: Record<string, number> = {};
-            activeTracks.forEach(track => {
+            activeTracksRef.current.forEach(track => {
                 const node = trackNodesRef.current[track.id];
                 if (node && node.waveform) {
                     const values = node.waveform.getValue();
@@ -383,7 +386,7 @@ const DawPage = () => {
         decay();
     }
     return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
-}, [isPlaying, activeTracks]);
+}, [isPlaying]);
 
   const getIsMuted = useCallback((trackId: string) => {
     const isMuted = mutedTracks.includes(trackId);
@@ -413,7 +416,7 @@ const DawPage = () => {
 
   const handlePlay = useCallback(async () => {
     const Tone = toneRef.current;
-    if (!Tone || loadingTracks.size > 0 || !activeSong) return;
+    if (!Tone || loadingTracks.size > 0 || !activeSongId) return;
     await initAudio();
     if (Tone.context.state === 'suspended') await Tone.context.resume();
     if (Tone.Transport.state !== 'started') {
@@ -427,7 +430,7 @@ const DawPage = () => {
       Tone.Transport.start();
       setIsPlaying(true);
     }
-  }, [loadingTracks.size, activeSong, initAudio]);
+  }, [loadingTracks.size, activeSongId, initAudio]);
 
   const handlePause = useCallback(() => {
     const Tone = toneRef.current;
