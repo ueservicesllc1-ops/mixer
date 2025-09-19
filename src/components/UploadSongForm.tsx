@@ -17,7 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileZip, Cog } from 'lucide-react';
+import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileArchive, Cog } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
 import { saveSong, NewSong, TrackFile } from '@/actions/songs';
@@ -237,24 +237,31 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
       return;
     }
 
-    const saveResult = await saveSong({
+    setIsUploading(true);
+
+    // This is a "dry-run" to check the song limit before any uploads.
+    // We pass an empty tracks array because we only care about the count check.
+    const preCheckResult = await saveSong({
       name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
       timeSignature: data.timeSignature, albumImageUrl: data.albumImageUrl,
-      lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: [], // Pasamos tracks vacío inicialmente
+      lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: [],
       userId: user.uid,
     });
 
-    if (saveResult.error === TRIAL_SONG_LIMIT_ERROR) {
+    if (preCheckResult.error === TRIAL_SONG_LIMIT_ERROR) {
       setShowPremiumDialog(true);
+      setIsUploading(false); // Stop the process
       return;
     }
     
-    if (!saveResult.success) {
-      toast({ variant: 'destructive', title: 'Error', description: saveResult.error || 'No se pudo verificar el límite de canciones.' });
+    // The pre-check might fail for other reasons too.
+    if (!preCheckResult.success && !preCheckResult.song) {
+      toast({ variant: 'destructive', title: 'Error de Pre-verificación', description: preCheckResult.error || 'No se pudo verificar el límite de canciones.' });
+      setIsUploading(false);
       return;
     }
+    
 
-    setIsUploading(true);
     const uploadedTracks: TrackFile[] = [];
     for (let i = 0; i < data.tracks.length; i++) {
         const track = data.tracks[i];
@@ -381,7 +388,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                                 <div className="mt-4 space-y-3">
                                     <FormLabel>Archivo ZIP seleccionado</FormLabel>
                                     <div className="flex items-center gap-2 p-2 border rounded-md bg-secondary/30">
-                                        <FileZip className="w-5 h-5 text-primary" />
+                                        <FileArchive className="w-5 h-5 text-primary" />
                                         <div className="flex-grow space-y-1.5">
                                             <p className="text-sm font-medium">{selectedZipFile.name}</p>
                                             {isProcessingZip && <Progress value={zipProgress} className="h-1.5" />}
@@ -457,4 +464,3 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
 };
 
 export default UploadSongForm;
-
