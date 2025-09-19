@@ -75,7 +75,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks
             )}
             onClick={() => onSongSelected(songGroup.songId)}
         >
-             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none opacity-60 hover:opacity-100 transition-opacity">
+             <div {...attributes} {...listeners} className="flex items-center justify-center cursor-grab touch-none p-1 opacity-60 hover:opacity-100 transition-opacity">
                 <GripVertical className="w-4 h-4 text-neutral-400" />
              </div>
 
@@ -528,8 +528,8 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
         <Sheet open={isSetlistSheetOpen} onOpenChange={setIsSetlistSheetOpen}>
             <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="w-8 h-8 text-primary" onClick={handleFetchSetlists}>
-                    <AlignJustify className="w-4 h-4" />
+                 <Button variant="outline" size="sm" className="h-8" onClick={handleFetchSetlists}>
+                    SETLISTS
                 </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[600px] sm:w-[700px] bg-card/95">
