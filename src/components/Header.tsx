@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Rewind, Play, Pause, Square, FastForward, Settings, Loader2, Plus, Minus, RotateCcw, User as UserIcon, LogOut, Shield } from 'lucide-react';
+import { Rewind, Play, Pause, Square, FastForward, Settings, Loader2, Plus, Minus, RotateCcw, User as UserIcon, LogOut, Shield, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Timeline from './Timeline';
 import { SongStructure } from '@/ai/flows/song-structure';
@@ -53,6 +53,7 @@ interface HeaderProps {
   onMasterVolumeChange: (volume: number) => void;
   masterVuLevel: number;
   user: AppUser | null;
+  onReorderTracks: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -81,7 +82,8 @@ const Header: React.FC<HeaderProps> = ({
   masterVolume,
   onMasterVolumeChange,
   masterVuLevel,
-  user
+  user,
+  onReorderTracks
 }) => {
   const { signOut } = useAuth();
   const currentBPM = activeSong?.tempo ? activeSong.tempo * playbackRate : null;
@@ -188,7 +190,8 @@ const Header: React.FC<HeaderProps> = ({
             </div>
         </div>
         
-        <div className="flex items-center justify-end gap-4 ml-auto">
+        <div className="flex items-center justify-end gap-2 ml-auto">
+            <Button variant="ghost" size="icon" onClick={onReorderTracks} disabled={!activeSong}><ListOrdered /></Button>
             <SettingsDialog fadeOutDuration={fadeOutDuration} onFadeOutDurationChange={onFadeOutDurationChange} isPanVisible={isPanVisible} onPanVisibilityChange={onPanVisibilityChange}>
                 <Button variant="ghost" size="icon"><Settings /></Button>
             </SettingsDialog>

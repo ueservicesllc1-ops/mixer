@@ -11,6 +11,7 @@ import { Input } from './ui/input';
 
 interface TrackPadProps {
   track: SetlistSong;
+  index: number;
   isMuted: boolean;
   isSolo: boolean;
   volume: number;
@@ -28,6 +29,7 @@ const LONG_PRESS_DURATION = 2000; // 2 segundos
 
 const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   track,
+  index,
   isMuted,
   isSolo,
   volume,
@@ -95,11 +97,7 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
 
   const volumeSliderValue = useMemo(() => [volume], [volume]);
   
-  const isGuideTrack = useMemo(() => {
-    const upperCaseName = track.name.trim().toUpperCase();
-    const guideNames = ['CUES', 'GUIA', 'GUIDES', 'GUIDE'];
-    return upperCaseName === 'CLICK' || guideNames.includes(upperCaseName);
-  }, [track.name]);
+  const isGuideTrack = index < 2;
 
   const isClickTrack = useMemo(() => track.name.trim().toUpperCase() === 'CLICK', [track.name]);
 
@@ -195,5 +193,3 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
 TrackPad.displayName = 'TrackPad';
 
 export default TrackPad;
-
-    

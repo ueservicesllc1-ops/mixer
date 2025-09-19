@@ -586,6 +586,7 @@ const DawPage = () => {
             onMasterVolumeChange={handleMasterVolumeChange}
             masterVuLevel={masterVuLevel}
             user={user}
+            onReorderTracks={reorderActiveTracks}
         />
       </div>
       
@@ -634,7 +635,6 @@ const DawPage = () => {
             onSongsFetched={setSongs}
             onSongAddedToSetlist={() => {}}
             loadingTracks={loadingTracks}
-            onReorderTracks={reorderActiveTracks}
         />
         <TonicPad />
       </div>

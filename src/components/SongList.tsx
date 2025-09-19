@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Button } from './ui/button';
-import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle, GripVertical, ListOrdered } from 'lucide-react';
+import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { getSongs, Song } from '@/actions/songs';
@@ -40,7 +40,6 @@ interface SongListProps {
   onSongsFetched: (songs: Song[]) => void;
   onSongAddedToSetlist: () => void;
   loadingTracks: Set<string>;
-  onReorderTracks: () => void;
 }
 
 type SongToRemove = {
@@ -124,7 +123,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, loadingTracks, onReorderTracks }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, loadingTracks }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -527,10 +526,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
             </span>
         </div>
 
-        <Button variant="ghost" size="icon" className="w-8 h-8 text-primary" onClick={onReorderTracks} disabled={!activeSongId}>
-            <ListOrdered className="w-4 h-4"/>
-        </Button>
-        
         <Sheet open={isSetlistSheetOpen} onOpenChange={setIsSetlistSheetOpen}>
             <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="w-8 h-8 text-primary" onClick={handleFetchSetlists}>

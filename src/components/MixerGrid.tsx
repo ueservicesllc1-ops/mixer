@@ -38,7 +38,7 @@ const MixerGrid: React.FC<MixerGridProps> = ({
 
   return (
     <div className="grid grid-cols-8 gap-4 items-start">
-      {tracks.map(track => {
+      {tracks.map((track, index) => {
         const isMuted = mutedTracks.includes(track.id);
         const isSolo = soloTracks.includes(track.id);
         const vuLevel = vuLevels[track.id] ?? -Infinity;
@@ -47,6 +47,7 @@ const MixerGrid: React.FC<MixerGridProps> = ({
           <TrackPad
             key={track.id}
             track={track}
+            index={index}
             isMuted={isMuted}
             isSolo={isSolo}
             volume={volumes[track.id] ?? 100}
