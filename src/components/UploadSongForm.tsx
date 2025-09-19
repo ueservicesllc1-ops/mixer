@@ -156,29 +156,8 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     setIsProcessingFiles(false);
   }
 
-  const handleFilePicker = async () => {
-    const useFallback = () => document.getElementById('file-picker-input-fallback')?.click();
-    
-    if (!window.showOpenFilePicker) {
-        useFallback();
-        return;
-    }
-
-    try {
-        const handles = await window.showOpenFilePicker({
-            multiple: true,
-            types: [
-                { description: 'Audio & Zip', accept: { 'audio/*': ACCEPTED_AUDIO_TYPES, 'application/zip': ['.zip'] } }
-            ],
-        });
-        const files = await Promise.all(handles.map(h => h.getFile()));
-        processFiles(files);
-    } catch (err: any) {
-        if (err.name !== 'AbortError') {
-            console.error("Error with File System Access API, using fallback:", err);
-            useFallback();
-        }
-    }
+  const handleFilePicker = () => {
+    document.getElementById('file-picker-input-fallback')?.click();
   };
   
   const handleFallbackFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,10 +200,23 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
       return;
     }
 
-    if (user.role === 'trial' && (user.songsUploadedCount || 0) >= TRIAL_SONG_LIMIT) {
-        setShowPremiumDialog(true);
-        return;
+    const saveResult = await saveSong({
+      name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
+      timeSignature: data.timeSignature, albumImageUrl: data.albumImageUrl,
+      lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: [], // Pasamos tracks vacío inicialmente
+      userId: user.uid,
+    });
+
+    if (saveResult.error === TRIAL_SONG_LIMIT_ERROR) {
+      setShowPremiumDialog(true);
+      return;
     }
+    
+    if (!saveResult.success) {
+      toast({ variant: 'destructive', title: 'Error', description: saveResult.error || 'No se pudo verificar el límite de canciones.' });
+      return;
+    }
+
 
     setIsUploading(true);
     const uploadedTracks: TrackFile[] = [];
@@ -262,19 +254,14 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
           lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: uploadedTracks,
           userId: user.uid,
         };
-        const saveResult = await saveSong(songData);
+        const finalSaveResult = await saveSong(songData);
 
-        if (saveResult.error === TRIAL_SONG_LIMIT_ERROR) {
-            setShowPremiumDialog(true);
-            setIsUploading(false);
-            return;
+
+        if (!finalSaveResult.success || !finalSaveResult.song) {
+             throw new Error(finalSaveResult.error || 'No se pudo guardar la canción.');
         }
 
-        if (!saveResult.success || !saveResult.song) {
-             throw new Error(saveResult.error || 'No se pudo guardar la canción.');
-        }
-
-        toast({ title: '¡Éxito!', description: `La canción "${saveResult.song.name}" ha sido guardada.` });
+        toast({ title: '¡Éxito!', description: `La canción "${finalSaveResult.song.name}" ha sido guardada.` });
         setTimeout(() => { resetComponentState(); onUploadFinished(); }, 1000);
     } catch (error) {
          toast({ variant: 'destructive', title: 'Error al guardar la canción', description: (error as Error).message });
