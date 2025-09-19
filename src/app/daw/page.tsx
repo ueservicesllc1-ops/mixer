@@ -57,6 +57,7 @@ const DawPage = () => {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [loadingTracks, setLoadingTracks] = useState<Set<string>>(new Set()); // Tracks currently being downloaded
+  const [isSongLoading, setIsSongLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [pitch, setPitch] = useState(0);
@@ -148,10 +149,10 @@ const DawPage = () => {
 
   const activeTracks = useMemo(() => {
     const getPrio = (trackName: string) => {
-      const upperCaseName = trackName.trim().toUpperCase();
-      if (upperCaseName === 'CLICK') return 1;
-      if (upperCaseName === 'CUES') return 2;
-      return 3;
+        const upperCaseName = trackName.trim().toUpperCase();
+        if (upperCaseName === 'CLICK') return 1;
+        if (['CUES', 'GUIA', 'GUIDES'].includes(upperCaseName)) return 2;
+        return 3;
     };
     return tracks
       .filter(t => t.songId === activeSongId)
@@ -194,10 +195,14 @@ const DawPage = () => {
     }
   }, [user]);
 
-  const isSongLoading = useMemo(() => {
-    if (!activeSongId) return false;
-    const tracksForSong = tracks.filter(t => t.songId === activeSongId);
-    return tracksForSong.some(t => loadingTracks.has(t.fileKey));
+  useEffect(() => {
+    if (activeSongId) {
+        const tracksForSong = tracks.filter(t => t.songId === activeSongId);
+        const isLoading = tracksForSong.some(t => loadingTracks.has(t.fileKey));
+        setIsSongLoading(isLoading);
+    } else {
+        setIsSongLoading(false);
+    }
   }, [activeSongId, tracks, loadingTracks]);
   
   const handleSongSelected = useCallback(async (songId: string) => {
@@ -215,12 +220,9 @@ const DawPage = () => {
     const tracksForSong = tracks.filter(t => t.songId === songId);
     
     const loadPromises = tracksForSong.map(async (track) => {
-      if (trackNodesRef.current[track.id] || loadingTracks.has(track.fileKey)) {
-        return;
-      }
-
+      if (trackNodesRef.current[track.id]) return; // Ya está cargado en memoria
       setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
-
+      
       try {
         const streamUrl = `/api/download-stream?fileKey=${track.fileKey}`;
         let audioBuffer: ArrayBuffer | null = await getCachedArrayBuffer(streamUrl);
@@ -247,7 +249,7 @@ const DawPage = () => {
         pitchShift.connect(eqNodesRef.current[0]);
         volume.connect(waveform);
         
-        volume.toDestination(); // Conectar el volumen al master, no el player directamente
+        volume.toDestination();
 
         trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
 
@@ -266,7 +268,7 @@ const DawPage = () => {
         });
       }
     });
-
+    
     await Promise.all(loadPromises);
 
     let finalMaxDuration = 0;
@@ -279,7 +281,7 @@ const DawPage = () => {
     });
     setDuration(finalMaxDuration);
 
-  }, [activeSongId, stopAllTracks, initAudio, tracks, loadingTracks, toast]);
+  }, [activeSongId, stopAllTracks, initAudio, tracks, toast]);
 
 
   useEffect(() => {
