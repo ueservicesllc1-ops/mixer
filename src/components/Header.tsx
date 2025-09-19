@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Rewind, Play, Pause, Square, FastForward, Settings, Loader2, Plus, Minus, RotateCcw, User as UserIcon, LogOut } from 'lucide-react';
+import { Rewind, Play, Pause, Square, FastForward, Settings, Loader2, Plus, Minus, RotateCcw, User as UserIcon, LogOut, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Timeline from './Timeline';
 import { SongStructure } from '@/ai/flows/song-structure';
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 
 interface HeaderProps {
@@ -217,6 +218,17 @@ const Header: React.FC<HeaderProps> = ({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {user?.role === 'admin' && (
+                    <>
+                        <DropdownMenuItem asChild>
+                            <Link href="/admin">
+                                <Shield className="mr-2 h-4 w-4" />
+                                <span>Panel de Admin</span>
+                            </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                    </>
+                )}
                 <DropdownMenuItem onClick={signOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Cerrar sesión</span>
