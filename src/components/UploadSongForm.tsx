@@ -19,11 +19,13 @@ import {
 import { Loader2, Upload, X, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
-import { saveSong, NewSong, TrackFile } from '@/actions/songs';
+import { saveSong, NewSong, TrackFile, TRIAL_SONG_LIMIT, TRIAL_SONG_LIMIT_ERROR } from '@/actions/songs';
 import { Progress } from './ui/progress';
 import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import PremiumUpsellDialog from './PremiumUpsellDialog';
+
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
 const ACCEPTED_MIME_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/aac', 'audio/mp3'];
@@ -69,6 +71,8 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
   const [trackErrorMessages, setTrackErrorMessages] = useState<Record<number, string>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
+  const [showPremiumDialog, setShowPremiumDialog] = useState(false);
+
   const { toast } = useToast();
 
   const form = useForm<SongFormValues>({
@@ -198,6 +202,12 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
       toast({ variant: 'destructive', title: 'Error', description: 'Debes iniciar sesión para subir una canción.' });
       return;
     }
+
+    if (user.role === 'trial' && (user.songsUploadedCount || 0) >= TRIAL_SONG_LIMIT) {
+        setShowPremiumDialog(true);
+        return;
+    }
+
     setIsUploading(true);
     const uploadedTracks: TrackFile[] = [];
     for (let i = 0; i < data.tracks.length; i++) {
@@ -235,6 +245,11 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
           userId: user.uid,
         };
         const saveResult = await saveSong(songData);
+        if (saveResult.error === TRIAL_SONG_LIMIT_ERROR) {
+            setShowPremiumDialog(true);
+            setIsUploading(false);
+            return;
+        }
         if (!saveResult.success || !saveResult.song) throw new Error(saveResult.error || 'No se pudo guardar la canción.');
         toast({ title: '¡Éxito!', description: `La canción "${saveResult.song.name}" ha sido guardada.` });
         setTimeout(() => { resetComponentState(); onUploadFinished(); }, 1000);
@@ -256,6 +271,16 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   const tracksError = form.formState.errors.tracks;
 
   return (
+    <>
+    <PremiumUpsellDialog
+        isOpen={showPremiumDialog}
+        onClose={() => setShowPremiumDialog(false)}
+        onConfirm={() => {
+            // Aquí iría la lógica para redirigir a la página de suscripción
+            console.log("Redirecting to subscription page...");
+            setShowPremiumDialog(false);
+        }}
+    />
     <Card>
         <CardContent className="pt-6">
             <Form {...form}>
@@ -358,6 +383,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
             </Form>
         </CardContent>
     </Card>
+    </>
   );
 };
 

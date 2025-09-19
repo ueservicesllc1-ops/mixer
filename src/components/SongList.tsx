@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
@@ -26,6 +27,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import PremiumUpsellDialog from './PremiumUpsellDialog';
 
 
 interface SongListProps {
@@ -48,6 +50,8 @@ interface GroupedSong {
     songName: string;
     tracks: SetlistSong[];
 }
+
+const TRIAL_SETLIST_LIMIT = 5;
 
 const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, loadingTracks: Set<string>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
@@ -134,6 +138,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
   const [songToRemoveFromSetlist, setSongToRemoveFromSetlist] = useState<SongToRemove | null>(null);
+  const [showPremiumDialog, setShowPremiumDialog] = useState(false);
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -214,6 +219,14 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const handleAddSongToSetlist = async (song: Song) => {
     if (!selectedSetlist) return;
 
+    const existingSongIdsInSetlist = new Set(selectedSetlist.songs.map(s => s.songId));
+    
+    // Comprobar el límite para usuarios de prueba
+    if (user?.role === 'trial' && existingSongIdsInSetlist.size >= TRIAL_SETLIST_LIMIT) {
+        setShowPremiumDialog(true);
+        return;
+    }
+
     const tracksToAdd: SetlistSong[] = song.tracks.map(track => ({
       id: `${song.id}_${track.fileKey}`, 
       name: track.name,
@@ -223,8 +236,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       songName: song.name, 
     }));
 
-    const existingSongIds = new Set(selectedSetlist.songs.map(s => s.songId));
-    if (existingSongIds.has(song.id)) {
+    if (existingSongIdsInSetlist.has(song.id)) {
         toast({
             variant: 'destructive',
             title: 'Canción duplicada',
@@ -472,6 +484,14 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
 
   return (
     <>
+    <PremiumUpsellDialog
+        isOpen={showPremiumDialog}
+        onClose={() => setShowPremiumDialog(false)}
+        onConfirm={() => {
+            console.log("Redirecting to subscription page...");
+            setShowPremiumDialog(false);
+        }}
+    />
     <AlertDialog open={!!songToRemoveFromSetlist} onOpenChange={() => setSongToRemoveFromSetlist(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>

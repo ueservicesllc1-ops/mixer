@@ -8,7 +8,9 @@ import { synchronizeLyricsFlow, LyricsSyncInput, LyricsSyncOutput } from '@/ai/f
 import { transcribeLyricsFlow, TranscribeLyricsInput } from '@/ai/flows/transcribe-lyrics';
 import { deleteFileFromB2 } from './upload';
 
-const TRIAL_SONG_LIMIT = 3;
+export const TRIAL_SONG_LIMIT = 3;
+export const TRIAL_SONG_LIMIT_ERROR = 'TRIAL_LIMIT_REACHED';
+
 
 // Represents a single track file within a song
 export interface TrackFile {
@@ -84,7 +86,8 @@ export async function saveSong(data: NewSong) {
         const songsUploadedCount = userData.songsUploadedCount || 0;
 
         if (userRole === 'trial' && songsUploadedCount >= TRIAL_SONG_LIMIT) {
-            throw new Error(`Has alcanzado el límite de ${TRIAL_SONG_LIMIT} canciones para la prueba. Suscríbete para subir más.`);
+            // En lugar de lanzar un error, devolvemos un código de error específico
+            throw new Error(TRIAL_SONG_LIMIT_ERROR);
         }
         
         // Crear el nuevo documento de canción
@@ -112,7 +115,12 @@ export async function saveSong(data: NewSong) {
     return { success: true, song: songData };
   } catch (error) {
     console.error('Error guardando en Firestore:', error);
-    return { success: false, error: (error as Error).message };
+     const errorMessage = (error as Error).message;
+    // Propagamos el error de límite para que el cliente pueda manejarlo
+    if (errorMessage === TRIAL_SONG_LIMIT_ERROR) {
+      return { success: false, error: TRIAL_SONG_LIMIT_ERROR };
+    }
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -153,7 +161,7 @@ export async function updateSong(songId: string, data: SongUpdateData) {
 
 async function runStructureAnalysisOnUpload(songId: string, tracks: TrackFile[]) {
     try {
-        const cuesTrack = tracks.find(t => t.name.trim().toUpperCase() === 'CUES');
+        const cuesTrack = tracks.find(t => t.name.trim().toUpperCase() === 'CUES' || t.name.trim().toUpperCase() === 'GUIA' || t.name.trim().toUpperCase() === 'GUIDES' || t.name.trim().toUpperCase() === 'GUIDE');
         if (cuesTrack) {
             console.log(`Iniciando análisis de estructura para la canción ${songId}...`);
             
