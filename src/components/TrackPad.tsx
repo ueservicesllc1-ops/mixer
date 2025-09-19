@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
@@ -93,6 +94,12 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   };
 
   const volumeSliderValue = useMemo(() => [volume], [volume]);
+  
+  const isGuideTrack = useMemo(() => {
+    const upperCaseName = track.name.trim().toUpperCase();
+    return upperCaseName === 'CLICK' || upperCaseName === 'CUES';
+  }, [track.name]);
+
   const isClickTrack = useMemo(() => track.name.trim().toUpperCase() === 'CLICK', [track.name]);
 
   const vuMeterLevel = useMemo(() => {
@@ -103,7 +110,12 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   return (
     <div className="flex flex-col items-center gap-2">
       <div 
-        className="w-full text-center bg-black/80 border border-blue-500/20 rounded-md px-1 py-1 h-8 flex items-center justify-center cursor-pointer select-none"
+        className={cn(
+            "w-full text-center bg-black/80 rounded-md px-1 py-1 h-8 flex items-center justify-center cursor-pointer select-none",
+            isGuideTrack 
+                ? "border border-destructive/40" 
+                : "border border-blue-500/20"
+        )}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
@@ -117,10 +129,20 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
             onChange={(e) => setInputValue(e.target.value)}
             onBlur={handleNameSubmit}
             onKeyDown={handleKeyDown}
-            className="w-full h-full p-0 m-0 bg-transparent border-none text-center font-mono text-sm text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)] focus:ring-0 focus:outline-none"
+            className={cn(
+                "w-full h-full p-0 m-0 bg-transparent border-none text-center font-mono text-sm focus:ring-0 focus:outline-none",
+                isGuideTrack 
+                    ? "text-destructive [text-shadow:0_0_8px_theme(colors.destructive)]"
+                    : "text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)]"
+            )}
           />
         ) : (
-          <span className="font-mono text-sm text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)] truncate block w-full">
+          <span className={cn(
+            "font-mono text-sm truncate block w-full",
+            isGuideTrack 
+                ? "text-destructive [text-shadow:0_0_8px_theme(colors.destructive)]"
+                : "text-blue-400 [text-shadow:0_0_8px_theme(colors.blue.500)]"
+          )}>
             {localName || track.name}
           </span>
         )}

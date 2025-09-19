@@ -233,7 +233,8 @@ const DawPage = () => {
         }
         
         const player = new Tone.Player();
-        await player.load(URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/wav' })));
+        const blobUrl = URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/wav' }));
+        await player.load(blobUrl);
 
         player.loop = true;
 
