@@ -213,82 +213,72 @@ const DawPage = () => {
     if (!Tone || eqNodesRef.current.length === 0) return;
 
     const tracksForSong = tracks.filter(t => t.songId === songId);
-    let maxDuration = 0;
+    
+    const loadPromises = tracksForSong.map(async (track) => {
+      if (trackNodesRef.current[track.id] || loadingTracks.has(track.fileKey)) {
+        return;
+      }
 
-    const loadTrack = async (track: SetlistSong) => {
-        if (trackNodesRef.current[track.id] || loadingTracks.has(track.fileKey)) {
-            if(trackNodesRef.current[track.id]) {
-                const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
-                if (playerDuration > maxDuration) maxDuration = playerDuration;
-            }
-            return;
+      setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
+
+      try {
+        const streamUrl = `/api/download-stream?fileKey=${track.fileKey}`;
+        let audioBuffer: ArrayBuffer | null = await getCachedArrayBuffer(streamUrl);
+
+        if (!audioBuffer) {
+          const response = await fetch(streamUrl);
+          if (!response.ok) throw new Error(`Fallo al cargar ${track.name}`);
+          audioBuffer = await response.arrayBuffer();
+          await cacheArrayBuffer(streamUrl, audioBuffer);
         }
 
-        setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
+        const player = new Tone.Player().toDestination();
+        // Load the audio buffer into the player
+        await player.load(URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/wav' })));
 
-        try {
-            const streamUrl = `/api/download-stream?fileKey=${track.fileKey}`;
-            
-            // Hybrid Caching Logic
-            let audioBuffer: ArrayBuffer | null = await getCachedArrayBuffer(streamUrl);
-            
-            if (!audioBuffer) {
-                const response = await fetch(streamUrl);
-                if (!response.ok) throw new Error(`Failed to fetch ${track.name}`);
-                audioBuffer = await response.arrayBuffer();
-                await cacheArrayBuffer(streamUrl, audioBuffer);
-            }
-            
-            const player = new Tone.Player().toDestination();
-            await player.load(streamUrl);
-            
-            const playerDuration = player.buffer.duration;
-            if (playerDuration > maxDuration) maxDuration = playerDuration;
-            player.loop = true;
+        player.loop = true;
 
-            const volume = new Tone.Volume(0);
-            const pitchShift = new Tone.PitchShift({ pitch: 0 });
-            const panner = new Tone.Panner(0);
-            const waveform = new Tone.Waveform(256);
-            
-            player.chain(volume, panner, pitchShift);
-            pitchShift.connect(eqNodesRef.current[0]);
-            volume.connect(waveform);
+        const volume = new Tone.Volume(0);
+        const pitchShift = new Tone.PitchShift({ pitch: 0 });
+        const panner = new Tone.Panner(0);
+        const waveform = new Tone.Waveform(256);
+        
+        player.chain(volume, panner, pitchShift);
+        pitchShift.connect(eqNodesRef.current[0]);
+        volume.connect(waveform);
 
-            trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
+        trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
 
-        } catch (e) {
-            console.error(`Error processing track ${track.name}:`, e);
-            toast({
-                variant: "destructive",
-                title: 'Error de Carga de Pista',
-                description: `No se pudo cargar la pista "${track.name}". El archivo podría estar corrupto o no ser accesible.`
-            });
-        } finally {
-            setLoadingTracks(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(track.fileKey);
-                return newSet;
-            });
-            // This is a bit tricky, we'll update duration at the end
-        }
-    };
+      } catch (e) {
+        console.error(`Error procesando la pista ${track.name}:`, e);
+        toast({
+          variant: "destructive",
+          title: 'Error de Carga de Pista',
+          description: `No se pudo cargar la pista "${track.name}". El archivo podría estar corrupto o no ser accesible.`
+        });
+      } finally {
+        setLoadingTracks(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(track.fileKey);
+          return newSet;
+        });
+      }
+    });
 
-    await Promise.all(tracksForSong.map(loadTrack));
+    await Promise.all(loadPromises);
 
-    // After all tracks are attempted, find the max duration
     let finalMaxDuration = 0;
     tracksForSong.forEach(track => {
-        const player = trackNodesRef.current[track.id]?.player;
-        if (player && player.loaded) {
-            const playerDuration = player.buffer.duration;
-            if (playerDuration > finalMaxDuration) finalMaxDuration = playerDuration;
-        }
+      const player = trackNodesRef.current[track.id]?.player;
+      if (player && player.loaded) {
+        const playerDuration = player.buffer.duration;
+        if (playerDuration > finalMaxDuration) finalMaxDuration = playerDuration;
+      }
     });
     setDuration(finalMaxDuration);
 
-
   }, [activeSongId, stopAllTracks, initAudio, tracks, loadingTracks, toast]);
+
 
   useEffect(() => {
     if (initialSetlist && initialSetlist.songs) {
