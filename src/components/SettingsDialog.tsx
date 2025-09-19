@@ -14,12 +14,13 @@ import { Separator } from './ui/separator';
 import { Label } from './ui/label';
 import { Slider } from './ui/slider';
 import { Switch } from './ui/switch';
-import { ChevronRight, X, Heart, Rss, HardDrive } from 'lucide-react';
+import { ChevronRight, X, Heart, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SamplerPadSettings from './SamplerPadSettings';
-import Link from 'next/link';
+import UploadSongDialog from './UploadSongDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
-type SettingsTab = 'General' | 'Sampler' | 'Admin' | 'About';
+type SettingsTab = 'General' | 'Sampler' | 'Subir Canciones' | 'About';
 
 interface SettingsRowProps {
   label: string;
@@ -90,10 +91,11 @@ const SettingsDialog = ({
     isPanVisible,
     onPanVisibilityChange,
 }: SettingsDialogProps) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>('General');
   const [tonicFollows, setTonicFollows] = useState(true);
 
-  const tabs: SettingsTab[] = ['General', 'Sampler', 'Admin', 'About'];
+  const tabs: SettingsTab[] = ['General', 'Sampler', 'Subir Canciones', 'About'];
 
   const renderGeneralSettings = () => {
     return (
@@ -114,21 +116,21 @@ const SettingsDialog = ({
         </div>
     );
   }
-
-  const renderAdminSettings = () => {
+  
+  const renderUploadSong = () => {
     return (
         <div className="max-w-md mx-auto text-center">
-            <HardDrive className="w-16 h-16 mx-auto text-primary mb-4" />
-            <h2 className="text-2xl font-bold">Gestión de Canciones</h2>
+            <Upload className="w-16 h-16 mx-auto text-primary mb-4" />
+            <h2 className="text-2xl font-bold">Subir Nueva Canción</h2>
             <p className="text-muted-foreground mt-2 mb-6">
-                La subida y edición de canciones debe hacerse desde un ordenador de escritorio para un mejor manejo de los archivos de audio.
+                Añade nuevas canciones a tu biblioteca personal. Se te pedirá el nombre, artista, tempo, y los archivos de audio de las pistas.
             </p>
-            <Link href="/admin" passHref>
+            <UploadSongDialog onUploadFinished={() => console.log('Upload finished from settings.')}>
                 <Button size="lg" className="gap-2">
-                    Ir al Administrador de Canciones
+                    Abrir Formulario de Subida
                     <ChevronRight />
                 </Button>
-            </Link>
+            </UploadSongDialog>
         </div>
     );
   }
@@ -192,7 +194,15 @@ const SettingsDialog = ({
                             {tab}
                         </Button>
                     ))}
-                    <Button variant="destructive" className="mt-auto h-12 text-lg">Log out</Button>
+                    {user?.role === 'admin' && (
+                         <Button
+                            variant="ghost" 
+                            className="justify-start text-lg h-12 px-4"
+                            onClick={() => window.location.href = '/admin/users'}
+                        >
+                            Gestionar Usuarios
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -208,19 +218,14 @@ const SettingsDialog = ({
                         <SamplerPadSettings />
                     </div>
                 )}
-                 {activeTab === 'Admin' && (
+                 {activeTab === 'Subir Canciones' && (
                     <div className="flex items-center justify-center h-full">
-                        {renderAdminSettings()}
+                        {renderUploadSong()}
                     </div>
                 )}
                 {activeTab === 'About' && (
                     <div className="flex items-center justify-center h-full">
                         {renderAboutSettings()}
-                    </div>
-                )}
-                {activeTab !== 'General' && activeTab !== 'About' && activeTab !== 'Sampler' && activeTab !== 'Admin' && (
-                    <div className="flex items-center justify-center h-full">
-                        <p className="text-muted-foreground text-2xl">Settings for {activeTab}</p>
                     </div>
                 )}
             </div>
