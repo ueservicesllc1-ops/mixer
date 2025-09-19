@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState } from 'react';
@@ -17,7 +15,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileArchive, Cog } from 'lucide-react';
+import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileArchive, Cog, GripVertical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
 import { saveSong, NewSong, TrackFile } from '@/actions/songs';
@@ -28,6 +26,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import PremiumUpsellDialog from './PremiumUpsellDialog';
 import { TRIAL_SONG_LIMIT_ERROR } from '@/lib/constants';
 import JSZip from 'jszip';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
@@ -68,10 +69,66 @@ interface UploadSongFormProps {
 
 type TrackStatus = 'pending' | 'uploading' | 'success' | 'error';
 
+interface SortableTrackItemProps {
+    index: number;
+    remove: (index: number) => void;
+    isFormBusy: boolean;
+    trackStatuses: Record<number, TrackStatus>;
+    uploadProgress: Record<number, number>;
+    trackErrorMessages: Record<number, string>;
+}
+
+const SortableTrackItem: React.FC<SortableTrackItemProps> = ({ index, remove, isFormBusy, trackStatuses, uploadProgress, trackErrorMessages }) => {
+    const { control, getValues } = useFormContext<SongFormValues>();
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: getValues(`tracks.${index}.file`).name });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+    
+    const StatusIcon = ({ status }: { status: TrackStatus }) => {
+        switch (status) {
+            case 'uploading': return <Loader2 className="w-5 h-5 text-primary animate-spin" />;
+            case 'success': return <CheckCircle className="w-5 h-5 text-green-500" />;
+            case 'error': return <XCircle className="w-5 h-5 text-destructive" />;
+            default: return <Clock className="w-5 h-5 text-muted-foreground" />;
+        }
+    };
+
+    return (
+        <div ref={setNodeRef} style={style}>
+            <div className="flex items-center gap-2 p-2 border rounded-md">
+                <div {...attributes} {...listeners} className="cursor-grab touch-none p-1">
+                    <GripVertical className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <StatusIcon status={trackStatuses[index] || 'pending'} />
+                <div className="flex-grow space-y-1.5">
+                    <FormField control={control} name={`tracks.${index}.name`} render={({ field }) => (
+                        <FormItem>
+                            <FormControl>
+                                <Input {...field} className="h-8 text-sm" disabled={isFormBusy} placeholder="Edite los nombres aqui" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
+                    {trackStatuses[index] === 'uploading' && <Progress value={uploadProgress[index]} className="h-1.5" />}
+                </div>
+                <div className="w-24 text-sm text-muted-foreground truncate">{getValues(`tracks.${index}.file.name`)}</div>
+                <Button type="button" variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => remove(index)} disabled={isFormBusy}>
+                    <X className="w-4 h-4" />
+                </Button>
+            </div>
+            {trackStatuses[index] === 'error' && <p className="text-xs text-destructive mt-1 ml-2">{trackErrorMessages[index]}</p>}
+        </div>
+    );
+};
+
+
 const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => {
   const { user } = useAuth();
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
-  const [isProcessingZip, setIsProcessingZip] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
@@ -80,6 +137,13 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   const [showPremiumDialog, setShowPremiumDialog] = useState(false);
 
   const { toast } = useToast();
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const form = useForm<SongFormValues>({
     resolver: zodResolver(songFormSchema),
@@ -96,7 +160,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     },
   });
 
-  const { fields, remove, replace } = useFieldArray({
+  const { fields, remove, replace, move } = useFieldArray({
     control: form.control,
     name: 'tracks',
   });
@@ -107,15 +171,21 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
       albumImageUrl: '', lyrics: '', youtubeUrl: '', tracks: [],
     });
     setSelectedZipFile(null);
-    setIsProcessingZip(false);
+    setIsProcessing(false);
     setZipProgress(0);
     setIsUploading(false);
     setTrackStatuses({});
     setTrackErrorMessages({});
     setUploadProgress({});
   }
+  
+  const handleFilePicker = () => {
+    const input = document.getElementById('file-picker-input');
+    input?.click();
+  };
 
   const processAudioFiles = async (files: File[]) => {
+    setIsProcessing(true);
     let audioTracks: { file: File, name: string, handle: undefined }[] = [];
     
     for (const file of files) {
@@ -133,6 +203,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
             form.setValue('name', audioTracks[0].name.split('.').slice(0, -1).join('.'));
         }
     }
+    setIsProcessing(false);
   }
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,8 +233,8 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   const processZipFile = async () => {
     if (!selectedZipFile) return;
 
-    setIsProcessingZip(true);
-    setZipProgress(30); // Visual cue that it started
+    setIsProcessing(true);
+    setZipProgress(30);
     
     let allTracks: { file: File, name: string, handle: undefined }[] = [];
     
@@ -187,6 +258,15 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
         setZipProgress(100);
         
         if (allTracks.length > 0) {
+            // Auto-sort CUES and CLICK to top
+            const getPrio = (trackName: string) => {
+                const upperCaseName = trackName.trim().toUpperCase();
+                if (upperCaseName === 'CLICK') return 1;
+                if (['CUES', 'GUIA', 'GUIDES', 'GUIDE'].includes(upperCaseName)) return 2;
+                return 3;
+            };
+            allTracks.sort((a, b) => getPrio(a.name) - getPrio(b.name));
+            
             replace(allTracks);
             toast({ title: 'ZIP procesado', description: `${allTracks.length} pistas de audio extraídas.` });
         } else {
@@ -197,7 +277,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
         toast({ variant: "destructive", title: "Error al leer el ZIP", description: "El archivo podría estar corrupto." });
     } finally {
         setTimeout(() => {
-          setIsProcessingZip(false);
+          setIsProcessing(false);
           setSelectedZipFile(null);
           setZipProgress(0);
         }, 500);
@@ -236,32 +316,26 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
       toast({ variant: 'destructive', title: 'Error', description: 'Debes iniciar sesión para subir una canción.' });
       return;
     }
-
+    
     setIsUploading(true);
 
-    // This is a "dry-run" to check the song limit before any uploads.
-    // We pass an empty tracks array because we only care about the count check.
     const preCheckResult = await saveSong({
       name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
-      timeSignature: data.timeSignature, albumImageUrl: data.albumImageUrl,
-      lyrics: data.lyrics, youtubeUrl: data.youtubeUrl, tracks: [],
-      userId: user.uid,
+      timeSignature: data.timeSignature, tracks: [], userId: user.uid,
     });
 
     if (preCheckResult.error === TRIAL_SONG_LIMIT_ERROR) {
       setShowPremiumDialog(true);
-      setIsUploading(false); // Stop the process
-      return;
-    }
-    
-    // The pre-check might fail for other reasons too.
-    if (!preCheckResult.success && !preCheckResult.song) {
-      toast({ variant: 'destructive', title: 'Error de Pre-verificación', description: preCheckResult.error || 'No se pudo verificar el límite de canciones.' });
       setIsUploading(false);
       return;
     }
     
-
+    if (!preCheckResult.success && preCheckResult.error) {
+      toast({ variant: 'destructive', title: 'Error de Pre-verificación', description: preCheckResult.error });
+      setIsUploading(false);
+      return;
+    }
+    
     const uploadedTracks: TrackFile[] = [];
     for (let i = 0; i < data.tracks.length; i++) {
         const track = data.tracks[i];
@@ -311,17 +385,17 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     }
   }
   
-  const StatusIcon = ({ status }: { status: TrackStatus }) => {
-    switch (status) {
-        case 'uploading': return <Loader2 className="w-5 h-5 text-primary animate-spin" />;
-        case 'success': return <CheckCircle className="w-5 h-5 text-green-500" />;
-        case 'error': return <XCircle className="w-5 h-5 text-destructive" />;
-        default: return <Clock className="w-5 h-5 text-muted-foreground" />;
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = fields.findIndex((field) => field.file.name === active.id);
+      const newIndex = fields.findIndex((field) => field.file.name === over.id);
+      move(oldIndex, newIndex);
     }
   }
 
   const tracksError = form.formState.errors.tracks;
-  const isFormBusy = isUploading || isProcessingZip;
+  const isFormBusy = isUploading || isProcessing;
 
   return (
     <>
@@ -375,9 +449,9 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                         <CardContent>
                              <FormItem>
                                 <FormControl>
-                                    <Button type="button" variant="outline" onClick={() => document.getElementById('file-picker-input')?.click()} disabled={isFormBusy} className="w-full">
-                                        <Upload className="mr-2 h-4 w-4"/>
-                                        Seleccionar Pistas o ZIP
+                                    <Button type="button" variant="outline" onClick={handleFilePicker} disabled={isFormBusy} className="w-full">
+                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Upload className="mr-2 h-4 w-4"/>}
+                                        {isProcessing ? 'Procesando Archivos...' : 'Seleccionar Pistas o ZIP'}
                                     </Button>
                                 </FormControl>
                                 <input id="file-picker-input" type="file" multiple className="hidden" onChange={handleFileChange} accept={[...ACCEPTED_AUDIO_TYPES, ".zip"].join(',')} />
@@ -391,9 +465,9 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                                         <FileArchive className="w-5 h-5 text-primary" />
                                         <div className="flex-grow space-y-1.5">
                                             <p className="text-sm font-medium">{selectedZipFile.name}</p>
-                                            {isProcessingZip && <Progress value={zipProgress} className="h-1.5" />}
+                                            {isProcessing && <Progress value={zipProgress} className="h-1.5" />}
                                         </div>
-                                        {isProcessingZip ? (
+                                        {isProcessing ? (
                                             <Loader2 className="w-5 h-5 text-primary animate-spin" />
                                         ) : (
                                             <>
@@ -408,29 +482,28 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                             )}
 
                             {fields.length > 0 && (
-                            <div className="space-y-3 mt-4">
-                                <FormLabel>Pistas a subir ({fields.length})</FormLabel>
-                                <ScrollArea className="h-48 pr-4">
-                                    <div className="space-y-2">
-                                        {fields.map((field, index) => (
-                                        <div key={field.id}>
-                                            <div className="flex items-center gap-2 p-2 border rounded-md">
-                                            <StatusIcon status={trackStatuses[index] || 'pending'} />
-                                            <div className="flex-grow space-y-1.5">
-                                                <FormField control={form.control} name={`tracks.${index}.name`} render={({ field }) => (
-                                                    <FormItem><FormControl><Input {...field} className="h-8 text-sm" disabled={isFormBusy}/></FormControl><FormMessage /></FormItem>
-                                                )}/>
-                                                {trackStatuses[index] === 'uploading' && <Progress value={uploadProgress[index]} className="h-1.5" />}
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                                <div className="space-y-3 mt-4">
+                                    <FormLabel>Pistas a subir ({fields.length})</FormLabel>
+                                    <ScrollArea className="h-48 pr-4">
+                                        <SortableContext items={fields.map(field => field.file.name)} strategy={verticalListSortingStrategy}>
+                                            <div className="space-y-2">
+                                                {fields.map((field, index) => (
+                                                    <SortableTrackItem
+                                                        key={field.id}
+                                                        index={index}
+                                                        remove={remove}
+                                                        isFormBusy={isFormBusy}
+                                                        trackStatuses={trackStatuses}
+                                                        uploadProgress={uploadProgress}
+                                                        trackErrorMessages={trackErrorMessages}
+                                                    />
+                                                ))}
                                             </div>
-                                            <div className="w-24 text-sm text-muted-foreground truncate">{form.getValues(`tracks.${index}.file.name`)}</div>
-                                            <Button type="button" variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => remove(index)} disabled={isFormBusy}><X className="w-4 h-4" /></Button>
-                                            </div>
-                                            {trackStatuses[index] === 'error' && <p className="text-xs text-destructive mt-1 ml-2">{trackErrorMessages[index]}</p>}
-                                        </div>
-                                        ))}
-                                    </div>
-                                </ScrollArea>
-                            </div>
+                                        </SortableContext>
+                                    </ScrollArea>
+                                </div>
+                            </DndContext>
                             )}
                         </CardContent>
                     </Card>
@@ -452,7 +525,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                     <div className="flex justify-end pt-4">
                         <Button type="submit" size="lg" disabled={isFormBusy || !form.formState.isDirty || !form.formState.isValid}>
                             {isFormBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isUploading ? 'Subiendo y Guardando...' : (isProcessingZip ? 'Procesando...' : 'Guardar Canción')}
+                            {isUploading ? 'Subiendo y Guardando...' : (isProcessing ? 'Procesando...' : 'Guardar Canción')}
                         </Button>
                     </div>
                 </form>
