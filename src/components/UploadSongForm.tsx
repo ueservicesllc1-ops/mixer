@@ -17,7 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Loader2, Upload, X, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileZip } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
 import { saveSong, NewSong, TrackFile } from '@/actions/songs';
@@ -27,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { useAuth } from '@/contexts/AuthContext';
 import PremiumUpsellDialog from './PremiumUpsellDialog';
 import { TRIAL_SONG_LIMIT, TRIAL_SONG_LIMIT_ERROR } from '@/lib/constants';
+import JSZip from 'jszip';
 
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
@@ -69,6 +70,7 @@ type TrackStatus = 'pending' | 'uploading' | 'success' | 'error';
 
 const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => {
   const { user } = useAuth();
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [trackStatuses, setTrackStatuses] = useState<Record<number, TrackStatus>>({});
   const [trackErrorMessages, setTrackErrorMessages] = useState<Record<number, string>>({});
@@ -108,12 +110,56 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     setUploadProgress({});
   }
 
+  const processFiles = async (files: FileList | File[]) => {
+    setIsProcessingFiles(true);
+    let allTracks: { file: File, name: string, handle: undefined }[] = [];
+
+    for (const file of Array.from(files)) {
+        if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+            toast({ title: 'Procesando archivo ZIP...', description: 'Extrayendo pistas de audio.' });
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const songNameFromZip = file.name.split('.').slice(0, -1).join('.');
+                if (!form.getValues('name') && songNameFromZip) {
+                    form.setValue('name', songNameFromZip);
+                }
+
+                for (const zipEntry of Object.values(zip.files)) {
+                    if (!zipEntry.dir && ACCEPTED_AUDIO_TYPES.some(type => zipEntry.name.toLowerCase().endsWith(type))) {
+                        const blob = await zipEntry.async('blob');
+                        const trackFile = new File([blob], zipEntry.name, { type: blob.type });
+                        if (trackFile.size <= MAX_FILE_SIZE) {
+                            const trackName = trackFile.name.split('.').slice(0, -1).join('.') || trackFile.name;
+                            allTracks.push({ file: trackFile, name: trackName, handle: undefined });
+                        } else {
+                            toast({ variant: "destructive", title: "Archivo demasiado grande", description: `"${trackFile.name}" del ZIP excede 100MB.` });
+                        }
+                    }
+                }
+            } catch (error) {
+                toast({ variant: "destructive", title: "Error al leer el ZIP", description: "El archivo podría estar corrupto." });
+            }
+        } else if (ACCEPTED_MIME_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE) {
+            const trackName = file.name.split('.').slice(0, -1).join('.') || file.name;
+            allTracks.push({ file, name: trackName, handle: undefined });
+        } else {
+            toast({ variant: "destructive", title: "Archivo no válido", description: `El archivo "${file.name}" no es soportado o es demasiado grande.` });
+        }
+    }
+
+    if (allTracks.length > 0) {
+        replace(allTracks);
+        if (!form.getValues('name')) {
+            form.setValue('name', allTracks[0].name.split('.').slice(0, -1).join('.'));
+        }
+    }
+    setIsProcessingFiles(false);
+  }
+
   const handleFilePicker = async () => {
     const useFallback = () => document.getElementById('file-picker-input-fallback')?.click();
     
-    const isCrossOrigin = window.self !== window.top;
-
-    if (isCrossOrigin || !window.showOpenFilePicker) {
+    if (!window.showOpenFilePicker) {
         useFallback();
         return;
     }
@@ -121,28 +167,12 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     try {
         const handles = await window.showOpenFilePicker({
             multiple: true,
-            types: [{ description: 'Audio Files', accept: { 'audio/*': ACCEPTED_AUDIO_TYPES } }],
+            types: [
+                { description: 'Audio & Zip', accept: { 'audio/*': ACCEPTED_AUDIO_TYPES, 'application/zip': ['.zip'] } }
+            ],
         });
-        const newTracks = [];
-        for (const handle of handles) {
-            const file = await handle.getFile();
-            if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
-                toast({ variant: "destructive", title: "Archivo no soportado", description: `"${file.name}" fue ignorado.`});
-                continue;
-            }
-             if (file.size > MAX_FILE_SIZE) {
-                toast({ variant: "destructive", title: "Archivo demasiado grande", description: `"${file.name}" excede 100MB y fue ignorado.`});
-                continue;
-            }
-            const trackName = file.name.split('.').slice(0, -1).join('.') || file.name;
-            newTracks.push({ file, name: trackName, handle });
-        }
-        if (newTracks.length > 0) {
-            replace(newTracks);
-            if (!form.getValues('name')) {
-                form.setValue('name', newTracks[0].name.split('.').slice(0, -1).join('.'));
-            }
-        }
+        const files = await Promise.all(handles.map(h => h.getFile()));
+        processFiles(files);
     } catch (err: any) {
         if (err.name !== 'AbortError') {
             console.error("Error with File System Access API, using fallback:", err);
@@ -154,21 +184,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   const handleFallbackFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files) return;
-      const newTracks = [];
-      for (const file of Array.from(files)) {
-          if (!ACCEPTED_MIME_TYPES.includes(file.type) || file.size > MAX_FILE_SIZE) {
-              toast({ variant: "destructive", title: "Archivo no válido", description: `El archivo "${file.name}" es demasiado grande o su formato no es soportado.`});
-              continue;
-          }
-          const trackName = file.name.split('.').slice(0, -1).join('.') || file.name;
-          newTracks.push({ file, name: trackName, handle: undefined });
-      }
-      if (newTracks.length > 0) {
-        replace(newTracks);
-        if (!form.getValues('name')) {
-            form.setValue('name', newTracks[0].name.split('.').slice(0, -1).join('.'));
-        }
-      }
+      processFiles(files);
       event.target.value = '';
   };
 
@@ -276,6 +292,7 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
   }
 
   const tracksError = form.formState.errors.tracks;
+  const isFormBusy = isUploading || isProcessingFiles;
 
   return (
     <>
@@ -283,7 +300,6 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
         isOpen={showPremiumDialog}
         onClose={() => setShowPremiumDialog(false)}
         onConfirm={() => {
-            // Aquí iría la lógica para redirigir a la página de suscripción
             console.log("Redirecting to subscription page...");
             setShowPremiumDialog(false);
         }}
@@ -325,17 +341,17 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                     <Card>
                          <CardHeader>
                             <CardTitle>Archivos de Pistas</CardTitle>
-                            <CardDescription>Selecciona todos los archivos de audio (stems) para esta canción.</CardDescription>
+                            <CardDescription>Selecciona los archivos de audio (WAV, MP3, etc.) o un archivo ZIP que los contenga.</CardDescription>
                         </CardHeader>
                         <CardContent>
                              <FormItem>
                                 <FormControl>
-                                    <Button type="button" variant="outline" onClick={handleFilePicker} disabled={isUploading} className="w-full">
-                                        <Upload className="mr-2 h-4 w-4"/>
-                                        Seleccionar Archivos de Pistas desde el disco
+                                    <Button type="button" variant="outline" onClick={handleFilePicker} disabled={isFormBusy} className="w-full">
+                                        {isProcessingFiles ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Upload className="mr-2 h-4 w-4"/>}
+                                        {isProcessingFiles ? 'Procesando Archivos...' : 'Seleccionar Pistas o ZIP'}
                                     </Button>
                                 </FormControl>
-                                <input id="file-picker-input-fallback" type="file" multiple className="hidden" onChange={handleFallbackFileChange} accept={ACCEPTED_AUDIO_TYPES.join(',')} />
+                                <input id="file-picker-input-fallback" type="file" multiple className="hidden" onChange={handleFallbackFileChange} accept={[...ACCEPTED_AUDIO_TYPES, ".zip"].join(',')} />
                                 {tracksError && <p className="text-sm font-medium text-destructive">{tracksError.message}</p>}
                             </FormItem>
                             {fields.length > 0 && (
@@ -349,12 +365,12 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                                             <StatusIcon status={trackStatuses[index] || 'pending'} />
                                             <div className="flex-grow space-y-1.5">
                                                 <FormField control={form.control} name={`tracks.${index}.name`} render={({ field }) => (
-                                                    <FormItem><FormControl><Input {...field} className="h-8 text-sm" disabled={isUploading}/></FormControl><FormMessage /></FormItem>
+                                                    <FormItem><FormControl><Input {...field} className="h-8 text-sm" disabled={isFormBusy}/></FormControl><FormMessage /></FormItem>
                                                 )}/>
                                                 {trackStatuses[index] === 'uploading' && <Progress value={uploadProgress[index]} className="h-1.5" />}
                                             </div>
                                             <div className="w-24 text-sm text-muted-foreground truncate">{form.getValues(`tracks.${index}.file.name`)}</div>
-                                            <Button type="button" variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => remove(index)} disabled={isUploading}><X className="w-4 h-4" /></Button>
+                                            <Button type="button" variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => remove(index)} disabled={isFormBusy}><X className="w-4 h-4" /></Button>
                                             </div>
                                             {trackStatuses[index] === 'error' && <p className="text-xs text-destructive mt-1 ml-2">{trackErrorMessages[index]}</p>}
                                         </div>
@@ -381,9 +397,9 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
                     </Card>
                     
                     <div className="flex justify-end pt-4">
-                        <Button type="submit" size="lg" disabled={isUploading || !form.formState.isDirty || !form.formState.isValid}>
-                            {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isUploading ? 'Subiendo y Guardando...' : 'Guardar Canción'}
+                        <Button type="submit" size="lg" disabled={isFormBusy || !form.formState.isDirty || !form.formState.isValid}>
+                            {isFormBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isUploading ? 'Subiendo y Guardando...' : (isProcessingFiles ? 'Procesando...' : 'Guardar Canción')}
                         </Button>
                     </div>
                 </form>

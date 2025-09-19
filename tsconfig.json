@@ -30,6 +30,7 @@
       "@/contexts/*": ["./src/contexts/*"]
     },
     "types": [
+      "node",
       "w3c-file-system-access"
     ]
   },
