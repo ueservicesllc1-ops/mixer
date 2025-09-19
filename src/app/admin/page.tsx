@@ -10,12 +10,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { blobToDataURI } from '@/lib/utils';
 import EditSongDialog from '@/components/EditSongDialog';
 import Link from 'next/link';
-import UploadSongForm from '@/components/UploadSongForm';
-import { cn } from '@/lib/utils';
+import UploadSongDialog from '@/components/UploadSongDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-
-type AdminView = 'songs' | 'upload';
 
 const AdminPage = () => {
   const { user, loading } = useAuth();
@@ -26,10 +23,9 @@ const AdminPage = () => {
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [analyzingSongId, setAnalyzingSongId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<AdminView>('songs');
   const { toast } = useToast();
 
-  const handleFetchSongs = async (selectLibraryView: boolean = false) => {
+  const handleFetchSongs = async () => {
     if (!user) return;
     setIsLoadingSongs(true);
     setSongsError(null);
@@ -44,9 +40,6 @@ const AdminPage = () => {
       setSongsError('Ocurrió un error al buscar las canciones.');
     } finally {
       setIsLoadingSongs(false);
-      if (selectLibraryView) {
-        setActiveView('songs');
-      }
     }
   };
 
@@ -229,35 +222,16 @@ const AdminPage = () => {
                     </Card>
                 </div>
 
-
-                <div className="flex gap-4 mb-8 border-b">
-                    <Button 
-                        variant="ghost" 
-                        onClick={() => setActiveView('songs')}
-                        className={cn("text-lg pb-3 rounded-none", activeView === 'songs' && 'border-b-2 border-primary text-primary')}>
-                        <Library className="mr-2 h-5 w-5"/>
-                        Mi Biblioteca de Canciones
-                    </Button>
-                    <Button 
-                        variant="ghost" 
-                        onClick={() => setActiveView('upload')}
-                        className={cn("text-lg pb-3 rounded-none", activeView === 'upload' && 'border-b-2 border-primary text-primary')}>
-                        <UploadCloud className="mr-2 h-5 w-5"/>
-                        Subir Nueva Canción
-                    </Button>
+                <div className="max-w-4xl mx-auto">
+                  <div className="flex justify-between items-center mb-8 border-b pb-4">
+                      <div className="flex items-center gap-3">
+                          <Library className="h-6 w-6"/>
+                          <h2 className="text-2xl font-bold">Mi Biblioteca de Canciones</h2>
+                      </div>
+                      <UploadSongDialog onUploadFinished={handleFetchSongs} />
+                  </div>
+                  {renderSongLibrary()}
                 </div>
-                
-                {activeView === 'songs' && (
-                    <div className="max-w-4xl mx-auto">
-                        {renderSongLibrary()}
-                    </div>
-                )}
-
-                {activeView === 'upload' && (
-                    <div className="max-w-3xl mx-auto">
-                        <UploadSongForm onUploadFinished={() => handleFetchSongs(true)} />
-                    </div>
-                )}
             </main>
         </div>
       </div>
