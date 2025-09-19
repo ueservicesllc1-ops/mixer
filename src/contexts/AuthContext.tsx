@@ -6,9 +6,9 @@ import { onAuthStateChanged, User as FirebaseAuthUser, signOut as firebaseSignOu
 import { auth, db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { doc, setDoc, getDoc, runTransaction, DocumentData } from 'firebase/firestore';
+import { doc, setDoc, getDoc, runTransaction, DocumentData, updateDoc } from 'firebase/firestore';
 
-export type UserRole = 'trial' | 'premium';
+export type UserRole = 'trial' | 'premium' | 'admin';
 
 // Interfaz extendida para incluir nuestros datos personalizados
 export interface AppUser extends FirebaseAuthUser {
@@ -33,11 +33,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<Partial<AppUser>> => {
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const existingData = userSnap.exists() ? userSnap.data() : {};
-
+const generateAndAssignShortId = async (user: FirebaseAuthUser, existingData: DocumentData = {}): Promise<Partial<AppUser>> => {
     // Si el usuario ya existe y tiene un shortId, no hacemos nada más que devolver los datos.
     if (existingData.shortId) {
         return {
@@ -49,7 +45,7 @@ const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<Partial
 
     const counterRef = doc(db, 'counters', 'users');
     let newShortId = '';
-    let newRole: UserRole = 'trial';
+    let newRole: UserRole = user.email === 'ueservicesllc1@gmail.com' ? 'admin' : 'trial';
     let newSongsUploadedCount = 0;
 
     try {
@@ -73,7 +69,7 @@ const generateAndAssignShortId = async (user: FirebaseAuthUser): Promise<Partial
                 createdAt: existingData.createdAt || new Date().toISOString(),
                 shortId: newShortId,
                 role: existingData.role || newRole,
-                songsUploadedCount: existingData.songsUploadedCount || newSongsUploadedCount,
+                songsUploadedCount: existingData.songsUploadedCount === undefined ? newSongsUploadedCount : existingData.songsUploadedCount,
             };
             
             transaction.set(counterRef, { count: newCount });
@@ -92,32 +88,40 @@ const fetchAppUser = async (firebaseUser: FirebaseAuthUser): Promise<AppUser | n
     const userRef = doc(db, 'users', firebaseUser.uid);
     const userSnap = await getDoc(userRef);
     
+    let firestoreData;
+
     if (userSnap.exists()) {
-        const firestoreData = userSnap.data();
-        return {
-            ...firebaseUser,
-            shortId: firestoreData.shortId,
-            role: firestoreData.role,
-            songsUploadedCount: firestoreData.songsUploadedCount,
-        };
+        firestoreData = userSnap.data();
+        // Lógica para asignar rol de admin al usuario específico
+        if (firebaseUser.email === 'ueservicesllc1@gmail.com' && firestoreData.role !== 'admin') {
+            await updateDoc(userRef, { role: 'admin' });
+            firestoreData.role = 'admin';
+        }
     } else {
-        // Esto podría pasar si un usuario existe en Auth pero no en Firestore (caso raro)
+        // Esto podría pasar si un usuario existe en Auth pero no en Firestore
         // Lo creamos ahora
         const extraData = await generateAndAssignShortId(firebaseUser);
-        return {
-            ...firebaseUser,
-            ...extraData,
-        };
+        firestoreData = { ...extraData };
     }
+
+    return {
+        ...firebaseUser,
+        shortId: firestoreData.shortId,
+        role: firestoreData.role,
+        songsUploadedCount: firestoreData.songsUploadedCount,
+    };
 }
 
 
 const saveUserToFirestore = async (user: FirebaseAuthUser) => {
     const userRef = doc(db, 'users', user.uid);
     const docSnap = await getDoc(userRef);
+    const existingData = docSnap.exists() ? docSnap.data() : {};
 
-    if (!docSnap.exists() || !docSnap.data().shortId) {
-       await generateAndAssignShortId(user);
+    if (!docSnap.exists() || !existingData.shortId) {
+       await generateAndAssignShortId(user, existingData);
+    } else if (user.email === 'ueservicesllc1@gmail.com' && existingData.role !== 'admin') {
+        await updateDoc(userRef, { role: 'admin' });
     }
 };
 
@@ -127,21 +131,35 @@ const ProtectedRoutes: React.FC<{ children: ReactNode }> = ({ children }) => {
     const pathname = usePathname();
 
     const publicRoutes = ['/', '/signup'];
+    const adminRoutes = ['/admin', '/admin/users'];
 
     useEffect(() => {
         if (loading) return;
 
         const isPublicRoute = publicRoutes.includes(pathname);
+        const isAdminRoute = adminRoutes.some(route => pathname.startsWith(route));
 
         if (!user && !isPublicRoute) {
             router.replace('/'); // Redirect to login
         } else if (user && isPublicRoute) {
             router.replace('/daw'); // Redirect to main app
+        } else if (user && isAdminRoute && user.role !== 'admin') {
+            router.replace('/daw'); // Redirect non-admins from admin routes
         }
     }, [user, loading, router, pathname]);
 
-    if (loading && !user) {
+    // Show loader on initial load or when redirecting from protected routes
+    if (loading || (!user && !publicRoutes.includes(pathname)) || (user && publicRoutes.includes(pathname))) {
         return (
+            <div className="flex h-screen w-screen items-center justify-center bg-background">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        );
+    }
+    
+    // Non-admin trying to access admin route (show loader while redirecting)
+    if (user && adminRoutes.some(route => pathname.startsWith(route)) && user.role !== 'admin') {
+         return (
             <div className="flex h-screen w-screen items-center justify-center bg-background">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
