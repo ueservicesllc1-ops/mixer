@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Header from '@/components/Header';
@@ -12,7 +13,6 @@ import YouTubePlayerDialog from '@/components/YouTubePlayerDialog';
 import type { LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import TeleprompterDialog from '@/components/TeleprompterDialog';
 import { useToast } from '@/components/ui/use-toast';
-import { getB2FileAsDataURI } from '@/actions/download';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { transposeNote } from '@/lib/utils';
@@ -207,7 +207,6 @@ const DawPage = () => {
       setPitch(0);
       setDuration(0);
 
-      // Trigger parallel loading
       await initAudio();
       const Tone = toneRef.current;
       if (!Tone || eqNodesRef.current.length === 0) return;
@@ -216,7 +215,6 @@ const DawPage = () => {
       let maxDuration = 0;
 
       tracksForSong.forEach(async (track) => {
-        // Skip if already loaded or currently loading
         if (trackNodesRef.current[track.id] || loadingTracks.has(track.fileKey)) {
           if (trackNodesRef.current[track.id]) {
             const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
@@ -228,12 +226,9 @@ const DawPage = () => {
         setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
 
         try {
-            const downloadResult = await getB2FileAsDataURI(track.fileKey);
-            if (!downloadResult.success || !downloadResult.dataUri) {
-                throw new Error(downloadResult.error || `Failed to get data URI for ${track.name}`);
-            }
-
-            const player = await new Tone.Player(downloadResult.dataUri).toDestination();
+            const streamUrl = `/api/download-stream?fileKey=${track.fileKey}`;
+            const player = new Tone.Player(streamUrl);
+            await Tone.loaded(); // Wait for the player to be ready (it will buffer enough to start)
             
             const playerDuration = player.buffer.duration;
             if (playerDuration > maxDuration) {
@@ -257,7 +252,7 @@ const DawPage = () => {
             toast({
                 variant: "destructive",
                 title: 'Error de Carga de Pista',
-                description: `No se pudo cargar la pista "${track.name}".`
+                description: `No se pudo cargar la pista "${track.name}". El archivo podría estar corrupto o no ser accesible.`
             });
         } finally {
             setLoadingTracks(prev => {
@@ -265,10 +260,12 @@ const DawPage = () => {
                 newSet.delete(track.fileKey);
                 return newSet;
             });
+            // Update duration one last time after all tracks are processed
+            if (Array.from(loadingTracks).filter(key => tracksForSong.some(t => t.fileKey === key)).length === 1) {
+              setDuration(maxDuration);
+            }
         }
     });
-
-    setDuration(maxDuration);
 
   }, [activeSongId, stopAllTracks, initAudio, tracks, loadingTracks, toast]);
 
@@ -283,31 +280,37 @@ const DawPage = () => {
     const nodes = trackNodesRef.current;
     return () => {
         Object.values(nodes).forEach(node => {
-            node.player.dispose();
-            node.panner.dispose();
-            node.pitchShift.dispose();
-            node.volume.dispose();
-            node.waveform.dispose();
+            if (node.player) node.player.dispose();
+            if (node.panner) node.panner.dispose();
+            if (node.pitchShift) node.pitchShift.dispose();
+            if (node.volume) node.volume.dispose();
+            if (node.waveform) node.waveform.dispose();
         });
     }
   }, []);
 
   // Set duration for the active song
   useEffect(() => {
-      if (!activeSongId) {
-          setDuration(0);
-          return;
-      }
-      const tracksForSong = tracks.filter(t => t.songId === activeSongId);
-      let maxDuration = 0;
+    if (!activeSongId) {
+        setDuration(0);
+        return;
+    }
+    const tracksForSong = tracks.filter(t => t.songId === activeSongId);
+    let maxDuration = 0;
+    
+    const allTracksLoaded = tracksForSong.every(track => trackNodesRef.current[track.id]?.player.loaded);
+    
+    if (allTracksLoaded) {
       tracksForSong.forEach(track => {
-          const player = trackNodesRef.current[track.id]?.player;
-          if (player && player.loaded) {
-              const playerDuration = player.buffer.duration;
-              if (playerDuration > maxDuration) maxDuration = playerDuration;
-          }
+        const player = trackNodesRef.current[track.id]?.player;
+        if (player) {
+          const playerDuration = player.buffer.duration;
+          if (playerDuration > maxDuration) maxDuration = playerDuration;
+        }
       });
       setDuration(maxDuration);
+    }
+
   }, [activeSongId, tracks, loadingTracks]); // Re-evaluate duration when loading finishes
 
   useEffect(() => {

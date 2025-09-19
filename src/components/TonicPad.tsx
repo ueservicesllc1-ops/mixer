@@ -79,6 +79,7 @@ const TonicPad: React.FC<TonicPadProps> = () => {
             }
             
             const player = new Tone.Player(downloadResult.dataUri).connect(masterVolumeNodeRef.current!);
+            await Tone.loaded();
             audioPlayersRef.current[sample.padKey] = player;
         } catch (e) {
             console.error(`Error cargando el sample ${sample.name}:`, e);
