@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Button } from './ui/button';
-import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle, GripVertical } from 'lucide-react';
+import { AlignJustify, Library, MoreHorizontal, Music, Loader2, Calendar, X, PlusCircle, DownloadCloud, Trash2, Upload, Globe, ScanSearch, Music2, Hash, Zap, Clock2, Pencil, WifiOff, CheckCircle, GripVertical, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { getSongs, Song } from '@/actions/songs';
@@ -40,6 +40,7 @@ interface SongListProps {
   onSongsFetched: (songs: Song[]) => void;
   onSongAddedToSetlist: () => void;
   loadingTracks: Set<string>;
+  onReorderTracks: () => void;
 }
 
 type SongToRemove = {
@@ -123,7 +124,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, loadingTracks }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, loadingTracks, onReorderTracks }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -519,18 +520,21 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     )}
 
     <div className="bg-card/50 rounded-lg p-3 flex flex-col h-full">
-      <div className="flex justify-between items-center mb-3">
-        <div className="flex-grow bg-black/80 border border-amber-400/20 rounded-md h-8 flex items-center justify-center px-2 mr-4">
+      <div className="flex justify-between items-center mb-3 gap-2">
+        <div className="flex-grow bg-black/80 border border-amber-400/20 rounded-md h-8 flex items-center justify-center px-2">
             <span className="font-mono text-sm uppercase text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)] truncate">
                 {selectedSetlist ? selectedSetlist.name : 'SELECCIONAR SETLIST'}
             </span>
         </div>
+
+        <Button variant="ghost" size="icon" className="w-8 h-8 text-primary" onClick={onReorderTracks} disabled={!activeSongId}>
+            <ListOrdered className="w-4 h-4"/>
+        </Button>
         
         <Sheet open={isSetlistSheetOpen} onOpenChange={setIsSetlistSheetOpen}>
             <SheetTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={handleFetchSetlists}>
+                <Button variant="ghost" size="icon" className="w-8 h-8 text-primary" onClick={handleFetchSetlists}>
                     <AlignJustify className="w-4 h-4" />
-                    Setlists
                 </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[600px] sm:w-[700px] bg-card/95">

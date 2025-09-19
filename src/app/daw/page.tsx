@@ -76,6 +76,7 @@ const DawPage = () => {
   const { toast } = useToast();
   
   const [localTrackNames, setLocalTrackNames] = useState<Record<string, string>>({});
+  const [activeTracks, setActiveTracks] = useState<SetlistSong[]>([]);
 
   useEffect(() => {
     try {
@@ -147,27 +148,45 @@ const DawPage = () => {
     });
   }, [eqBands]);
 
-  const activeTracks = useMemo(() => {
-    const getTrackPriority = (trackName: string): number => {
-        const upperCaseName = trackName.trim().toUpperCase();
-        if (upperCaseName.includes('CLICK')) return 1;
-        if (upperCaseName.includes('CUES') || upperCaseName.includes('GUIA')) return 2;
-        if (upperCaseName.includes('DRUM')) return 3;
-        const guitarTerms = ['GTR', 'GT', 'G1', 'G2', 'G3', 'GA', 'AG', 'EG', 'EG1', 'EG2', 'EG3'];
-        if (guitarTerms.some(term => upperCaseName.includes(term))) return 4;
-        if (upperCaseName.includes('STRING')) return 5;
-        return 99; // Default priority for other tracks
-    };
+  const getTrackPriority = (trackName: string): number => {
+      const upperCaseName = trackName.trim().toUpperCase();
+      if (upperCaseName.includes('CLICK')) return 1;
+      if (upperCaseName.includes('CUES') || upperCaseName.includes('GUIA')) return 2;
+      if (upperCaseName.includes('DRUM')) return 3;
+      const guitarTerms = ['GTR', 'GT', 'G1', 'G2', 'G3', 'GA', 'AG', 'EG', 'EG1', 'EG2', 'EG3'];
+      if (guitarTerms.some(term => upperCaseName.includes(term))) return 4;
+      if (upperCaseName.includes('STRING')) return 5;
+      return 99; // Default priority for other tracks
+  };
 
-    return tracks
-      .filter(t => t.songId === activeSongId)
-      .sort((a, b) => {
-          const prioA = getTrackPriority(a.name);
-          const prioB = getTrackPriority(b.name);
-          if (prioA !== prioB) return prioA - prioB;
-          return a.name.localeCompare(b.name);
+  const reorderActiveTracks = useCallback(() => {
+      setActiveTracks(prevTracks => {
+          const sorted = [...prevTracks].sort((a, b) => {
+              const nameA = localTrackNames[a.id] || a.name;
+              const nameB = localTrackNames[b.id] || b.name;
+              const prioA = getTrackPriority(nameA);
+              const prioB = getTrackPriority(nameB);
+              if (prioA !== prioB) return prioA - prioB;
+              return nameA.localeCompare(nameB);
+          });
+          return sorted;
       });
-  }, [tracks, activeSongId]);
+      toast({ title: "Pistas Reordenadas", description: "El mezclador se ha actualizado con el nuevo orden." });
+  }, [localTrackNames, toast]);
+
+
+  useEffect(() => {
+      const tracksForSong = tracks.filter(t => t.songId === activeSongId);
+      const sortedTracks = [...tracksForSong].sort((a, b) => {
+          const nameA = localTrackNames[a.id] || a.name;
+          const nameB = localTrackNames[b.id] || b.name;
+          const prioA = getTrackPriority(nameA);
+          const prioB = getTrackPriority(nameB);
+          if (prioA !== prioB) return prioA - prioB;
+          return nameA.localeCompare(nameB);
+      });
+      setActiveTracks(sortedTracks);
+  }, [activeSongId, tracks, localTrackNames]);
 
 
   const activeTracksRef = useRef(activeTracks);
@@ -615,6 +634,7 @@ const DawPage = () => {
             onSongsFetched={setSongs}
             onSongAddedToSetlist={() => {}}
             loadingTracks={loadingTracks}
+            onReorderTracks={reorderActiveTracks}
         />
         <TonicPad />
       </div>
@@ -637,6 +657,3 @@ const DawPage = () => {
 };
 
 export default DawPage;
-
-    
-    
