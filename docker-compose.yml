@@ -1,0 +1,20 @@
+
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount the source code into the container for live-reloading
+      - .:/app
+      # This prevents the local node_modules from overwriting the container's node_modules
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    # The command to start the development server
+    command: npm run dev
+
