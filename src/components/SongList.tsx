@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
@@ -36,9 +35,7 @@ interface SongListProps {
   onSongSelected: (songId: string) => void;
   onSongsFetched: (songs: Song[]) => void;
   onSongAddedToSetlist: () => void;
-  isSongLoading: boolean;
-  onSongLoadStarted: () => void;
-  onSongLoadFinished: () => void;
+  loadingTracks: Set<string>;
 }
 
 type SongToRemove = {
@@ -52,7 +49,7 @@ interface GroupedSong {
     tracks: SetlistSong[];
 }
 
-const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingSongId, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, loadingSongId: string | null, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
+const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, loadingTracks: Set<string>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });
 
     const style = {
@@ -61,7 +58,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingSongId
     };
     
     const fullSong = songs.find(s => s.id === songGroup.songId);
-    const isLoadingThisSong = loadingSongId === songGroup.songId;
+    const isLoadingThisSong = songGroup.tracks.some(t => loadingTracks.has(t.fileKey));
 
     return (
         <div 
@@ -122,7 +119,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingSongId
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, isSongLoading, onSongLoadStarted, onSongLoadFinished }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, loadingTracks }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -133,7 +130,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   const [setlistsError, setSetlistsError] = useState<string | null>(null);
   
   const [selectedSetlist, setSelectedSetlist] = useState<Setlist | null>(null);
-  const [loadingSongId, setLoadingSongId] = useState<string | null>(null);
   const [setlistToEdit, setSetlistToEdit] = useState<Setlist | null>(null);
   const [isSetlistSheetOpen, setIsSetlistSheetOpen] = useState(false);
   const [isLibrarySheetOpen, setIsLibrarySheetOpen] = useState(false);
@@ -152,18 +148,6 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       setSelectedSetlist(null);
     }
   }, [initialSetlist]);
-
-  // When a song starts loading, set the loading ID.
-  useEffect(() => {
-    if (isSongLoading && activeSongId) {
-        setLoadingSongId(activeSongId);
-        onSongLoadStarted();
-    } else if (!isSongLoading && loadingSongId) {
-        setLoadingSongId(null);
-        onSongLoadFinished();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSongLoading, activeSongId]);
 
 
   const handleFetchSongs = async () => {
@@ -472,7 +456,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                              index={index}
                              songs={songs}
                              activeSongId={activeSongId}
-                             loadingSongId={loadingSongId}
+                             loadingTracks={loadingTracks}
                              onSongSelected={onSongSelected}
                              onRemove={(songId, songName) => setSongToRemoveFromSetlist({ songId, songName })}
                            >
