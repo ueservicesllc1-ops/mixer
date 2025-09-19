@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import PremiumUpsellDialog from './PremiumUpsellDialog';
 import { TRIAL_SETLIST_LIMIT } from '@/lib/constants';
+import UploadSongDialog from './UploadSongDialog';
 
 
 interface SongListProps {
@@ -316,7 +317,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
     }
   };
 
-  const renderSongLibrary = () => {
+  const renderSongLibrary = (isForAdding: boolean) => {
     if (isLoadingSongs) {
       return (
         <div className="flex justify-center items-center h-full">
@@ -342,7 +343,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
                     </div>
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                         {selectedSetlist && (
+                         {isForAdding && selectedSetlist && (
                             <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleAddSongToSetlist(song)}>
                                 <PlusCircle className="w-5 h-5 text-primary" />
                             </Button>
@@ -355,7 +356,7 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       );
     }
     
-    return <p className="text-muted-foreground text-center">No hay canciones en la biblioteca. Ve a la sección de administrador para subir canciones.</p>;
+    return <p className="text-muted-foreground text-center pt-10">No hay canciones en la biblioteca.</p>;
   };
 
     const getGroupedSongs = (): GroupedSong[] => {
@@ -586,32 +587,34 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
       </div>
         <div className="pt-3 mt-auto border-t border-border/50 flex justify-between items-center">
             <Button variant="ghost" size="sm" className="text-muted-foreground gap-2" onClick={() => {
-              if (user) {
-                handleFetchSongs();
-              }
+              if (user) { handleFetchSongs(); }
               setIsLibrarySheetOpen(true);
             }}>
                 <PlusCircle className="w-4 h-4" />
                 Añadir al Setlist
             </Button>
-            <Link href="/admin" passHref>
-                <Button variant="ghost" size="sm" className="text-muted-foreground gap-2">
-                    <Library className="w-4 h-4" />
-                    Ir a la Biblioteca
-                </Button>
-            </Link>
+            <Button variant="ghost" size="sm" className="text-muted-foreground gap-2" onClick={() => {
+              if (user) { handleFetchSongs(); }
+              setIsLibrarySheetOpen(true);
+            }}>
+                <Library className="w-4 h-4" />
+                Ir a la Biblioteca
+            </Button>
         </div>
 
       <Sheet open={isLibrarySheetOpen} onOpenChange={setIsLibrarySheetOpen}>
         <SheetContent side="left" className="w-[600px] sm:w-[700px] bg-card/95 p-0">
-          <SheetHeader className="p-4 pb-0">
-            <SheetTitle>Añadir Canciones a "{selectedSetlist?.name}"</SheetTitle>
+          <SheetHeader className="p-4 pb-2 border-b">
+            <div className="flex justify-between items-center">
+                <SheetTitle>Biblioteca de Canciones</SheetTitle>
+                <UploadSongDialog onUploadFinished={handleFetchSongs} />
+            </div>
             <SheetDescription>
-                Explora tu biblioteca de canciones y añádelas al setlist activo.
+                {selectedSetlist ? 'Añade canciones a tu setlist o gestiona tu biblioteca.' : 'Gestiona tu biblioteca de canciones.'}
             </SheetDescription>
           </SheetHeader>
-          <div className="flex-grow overflow-y-auto px-4 mt-4">
-            {renderSongLibrary()}
+          <div className="flex-grow overflow-y-auto p-4">
+            {renderSongLibrary(!!selectedSetlist)}
           </div>
         </SheetContent>
       </Sheet>
