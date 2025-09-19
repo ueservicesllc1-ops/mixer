@@ -231,9 +231,8 @@ const DawPage = () => {
           audioBuffer = await response.arrayBuffer();
           await cacheArrayBuffer(streamUrl, audioBuffer);
         }
-
-        const player = new Tone.Player().toDestination();
-        // Load the audio buffer into the player
+        
+        const player = new Tone.Player();
         await player.load(URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/wav' })));
 
         player.loop = true;
@@ -246,6 +245,8 @@ const DawPage = () => {
         player.chain(volume, panner, pitchShift);
         pitchShift.connect(eqNodesRef.current[0]);
         volume.connect(waveform);
+        
+        volume.toDestination(); // Conectar el volumen al master, no el player directamente
 
         trackNodesRef.current[track.id] = { player, panner, pitchShift, volume, waveform };
 
@@ -535,6 +536,7 @@ const DawPage = () => {
             duration={duration}
             onSeek={handleSeek}
             isReadyToPlay={!!activeSong && !isSongLoading}
+            songStructure={songStructure}
             fadeOutDuration={fadeOutDuration}
             onFadeOutDurationChange={setFadeOutDuration}
             isPanVisible={isPanVisible}
