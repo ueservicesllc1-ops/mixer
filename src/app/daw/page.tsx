@@ -148,17 +148,22 @@ const DawPage = () => {
   }, [eqBands]);
 
   const activeTracks = useMemo(() => {
-    const getPrio = (trackName: string) => {
+    const getTrackPriority = (trackName: string): number => {
         const upperCaseName = trackName.trim().toUpperCase();
-        if (upperCaseName === 'CLICK') return 1;
-        if (['CUES', 'GUIA', 'GUIDES', 'GUIDE'].includes(upperCaseName)) return 2;
-        return 3;
+        if (upperCaseName.includes('CLICK')) return 1;
+        if (upperCaseName.includes('CUES') || upperCaseName.includes('GUIA')) return 2;
+        if (upperCaseName.includes('DRUM')) return 3;
+        const guitarTerms = ['GTR', 'GT', 'G1', 'G2', 'G3', 'GA', 'AG', 'EG', 'EG1', 'EG2', 'EG3'];
+        if (guitarTerms.some(term => upperCaseName.includes(term))) return 4;
+        if (upperCaseName.includes('STRING')) return 5;
+        return 99; // Default priority for other tracks
     };
+
     return tracks
       .filter(t => t.songId === activeSongId)
       .sort((a, b) => {
-          const prioA = getPrio(a.name);
-          const prioB = getPrio(b.name);
+          const prioA = getTrackPriority(a.name);
+          const prioB = getTrackPriority(b.name);
           if (prioA !== prioB) return prioA - prioB;
           return a.name.localeCompare(b.name);
       });
@@ -633,4 +638,5 @@ const DawPage = () => {
 
 export default DawPage;
 
+    
     
