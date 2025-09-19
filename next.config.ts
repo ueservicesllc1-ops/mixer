@@ -32,11 +32,12 @@ const nextConfig: NextConfig = {
       }
     ],
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = [...config.externals, 'handlebars'];
+  experimental: {
+    turbo: {
+      resolveAlias: {
+        'handlebars': 'handlebars/dist/cjs/handlebars.js'
+      }
     }
-    return config;
   },
 };
 
