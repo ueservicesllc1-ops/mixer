@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { getB2FileAsDataURI } from '@/actions/download';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { transposeNote } from '@/lib/utils';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -54,7 +55,7 @@ const DawPage = () => {
   const masterVolumeNodeRef = useRef<import('tone').Volume | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isSongLoading, setIsSongLoading] = useState(false);
+  const [isPreparingPlay, setIsPreparingPlay] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [pitch, setPitch] = useState(0);
@@ -72,7 +73,6 @@ const DawPage = () => {
 
   const { toast } = useToast();
   
-  // State for local track names
   const [localTrackNames, setLocalTrackNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -207,14 +207,26 @@ const DawPage = () => {
         setTracks(initialSetlist.songs);
         if (initialSetlist.songs.length > 0 && !activeSongId) {
             const firstSongId = initialSetlist.songs[0].songId;
-            if (firstSongId) {
-                // Do not auto-select on initial load
-                // setActiveSongId(firstSongId);
-            }
+            if (firstSongId) {}
         }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSetlist]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    const nodes = trackNodesRef.current;
+    return () => {
+        Object.values(nodes).forEach(node => {
+            node.player.dispose();
+            node.panner.dispose();
+            node.pitchShift.dispose();
+            node.volume.dispose();
+            node.waveform.dispose();
+        });
+    }
+  }, []);
+
 
   useEffect(() => {
         const prepareAudioNodes = async () => {
@@ -224,29 +236,42 @@ const DawPage = () => {
                 return;
             }
 
-            setIsSongLoading(true);
+            const tracksForSong = tracks.filter(t => t.songId === activeSongId);
+            
+            // Check if all players for the current song are already loaded
+            const allLoaded = tracksForSong.every(track => trackNodesRef.current[track.id]?.player.loaded);
+            if(allLoaded && tracksForSong.length > 0) {
+                // If all loaded, just find the max duration from existing players
+                let maxDuration = 0;
+                tracksForSong.forEach(track => {
+                    const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
+                    if(playerDuration > maxDuration) maxDuration = playerDuration;
+                });
+                setDuration(maxDuration);
+                setIsPreparingPlay(false);
+                return;
+            }
+
+            setIsPreparingPlay(true);
             await initAudio();
             const Tone = toneRef.current;
             if (!Tone || eqNodesRef.current.length === 0) return;
-
-            Object.values(trackNodesRef.current).forEach(node => {
-                node.player.dispose();
-                node.panner.dispose();
-                node.pitchShift.dispose();
-                node.volume.dispose();
-                node.waveform.dispose();
-            });
-            trackNodesRef.current = {};
             
-            const tracksForSong = tracks.filter(t => t.songId === activeSongId);
             if(tracksForSong.length === 0) {
               setDuration(0);
-              setIsSongLoading(false);
+              setIsPreparingPlay(false);
               return;
             }
             
             let maxDuration = 0;
             const loadPromises = tracksForSong.map(async (track) => {
+                // Only load if not already in our nodes ref
+                if (trackNodesRef.current[track.id]) {
+                    const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
+                    if (playerDuration > maxDuration) maxDuration = playerDuration;
+                    return;
+                };
+
                 try {
                     const downloadResult = await getB2FileAsDataURI(track.fileKey);
                     if (!downloadResult.success || !downloadResult.dataUri) {
@@ -285,7 +310,7 @@ const DawPage = () => {
 
             await Promise.allSettled(loadPromises);
             setDuration(maxDuration);
-            setIsSongLoading(false);
+            setIsPreparingPlay(false);
         };
 
         prepareAudioNodes();
@@ -478,20 +503,23 @@ const DawPage = () => {
     setCurrentTime(newTime);
   };
   
+  const displayKey = activeSong?.key ? transposeNote(activeSong.key, pitch) : '-';
+
+
   return (
     <>
     <div className="grid grid-cols-[1fr_384px] grid-rows-[auto_1fr] h-screen w-screen p-4 gap-4">
       <div className="col-span-2 row-start-1">
         <Header 
             isPlaying={isPlaying}
-            isPreparingPlay={isSongLoading}
+            isPreparingPlay={isPreparingPlay}
             onPlay={handlePlay}
             onPause={handlePause}
             onStop={stopAllTracks}
             currentTime={currentTime}
             duration={duration}
             onSeek={handleSeek}
-            isReadyToPlay={!!activeSong && !isSongLoading}
+            isReadyToPlay={!!activeSong && !isPreparingPlay}
             fadeOutDuration={fadeOutDuration}
             onFadeOutDurationChange={setFadeOutDuration}
             isPanVisible={isPanVisible}
@@ -502,6 +530,7 @@ const DawPage = () => {
             onBpmChange={handleBpmChange}
             pitch={pitch}
             onPitchChange={setPitch}
+            displayKey={displayKey}
             masterVolume={masterVolume}
             onMasterVolumeChange={handleMasterVolumeChange}
             masterVuLevel={masterVuLevel}
@@ -553,7 +582,9 @@ const DawPage = () => {
             onSongSelected={handleSongSelected}
             onSongsFetched={setSongs}
             onSongAddedToSetlist={() => {}}
-            isSongLoading={isSongLoading}
+            isSongLoading={isPreparingPlay}
+            onSongLoadStarted={() => setIsPreparingPlay(true)}
+            onSongLoadFinished={() => setIsPreparingPlay(false)}
         />
         <TonicPad />
       </div>
@@ -576,5 +607,3 @@ const DawPage = () => {
 };
 
 export default DawPage;
-
-    

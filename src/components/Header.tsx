@@ -47,6 +47,7 @@ interface HeaderProps {
   onBpmChange: (bpm: number) => void;
   pitch: number;
   onPitchChange: (pitch: number) => void;
+  displayKey: string;
   masterVolume: number;
   onMasterVolumeChange: (volume: number) => void;
   masterVuLevel: number;
@@ -75,6 +76,7 @@ const Header: React.FC<HeaderProps> = ({
   onBpmChange,
   pitch,
   onPitchChange,
+  displayKey,
   masterVolume,
   onMasterVolumeChange,
   masterVuLevel,
@@ -113,8 +115,6 @@ const Header: React.FC<HeaderProps> = ({
   const handleBpmStep = (amount: number) => {
     if (currentBPM) onBpmChange(currentBPM + amount);
   }
-
-  const displayNote = activeSong?.key ? cn(activeSong.key, pitch) : '-';
 
   const getUserInitials = (name: string | null | undefined) => {
     if (!name) return 'U';
@@ -162,7 +162,7 @@ const Header: React.FC<HeaderProps> = ({
                     <Minus className="w-5 h-5" />
                  </Button>
                 <div className="bg-black/80 border border-amber-400/20 rounded-md px-2 py-1 w-20 text-center mx-2">
-                    <span className="font-mono text-lg text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)]">{displayNote}</span>
+                    <span className="font-mono text-lg text-amber-400 [text-shadow:0_0_8px_theme(colors.amber.400)]">{displayKey}</span>
                     <span className="text-xs font-mono text-amber-400/70 -mt-1 block">PITCH</span>
                 </div>
                  <Button variant="ghost" size="icon" className="w-10 h-10 text-amber-400/70" onClick={() => onPitchChange(pitch + 1)} disabled={!activeSong}>

@@ -37,6 +37,8 @@ interface SongListProps {
   onSongsFetched: (songs: Song[]) => void;
   onSongAddedToSetlist: () => void;
   isSongLoading: boolean;
+  onSongLoadStarted: () => void;
+  onSongLoadFinished: () => void;
 }
 
 type SongToRemove = {
@@ -120,7 +122,7 @@ const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingSongId
     );
 }
 
-const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, isSongLoading }) => {
+const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSetlistSelected, onSongSelected, onSongsFetched, onSongAddedToSetlist, isSongLoading, onSongLoadStarted, onSongLoadFinished }) => {
   const { user } = useAuth();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoadingSongs, setIsLoadingSongs] = useState(false);
@@ -155,9 +157,12 @@ const SongList: React.FC<SongListProps> = ({ initialSetlist, activeSongId, onSet
   useEffect(() => {
     if (isSongLoading && activeSongId) {
         setLoadingSongId(activeSongId);
-    } else if (!isSongLoading) {
+        onSongLoadStarted();
+    } else if (!isSongLoading && loadingSongId) {
         setLoadingSongId(null);
+        onSongLoadFinished();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSongLoading, activeSongId]);
 
 
