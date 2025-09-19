@@ -58,6 +58,21 @@ const toTitleCase = (str: string) => {
 export async function saveSong(data: NewSong) {
   try {
     const userRef = doc(db, 'users', data.userId);
+    
+    // First, check the user's limit without a transaction to return a specific error code.
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+        return { success: false, error: "El usuario no existe." };
+    }
+    const userData = userDoc.data();
+    const userRole = userData.role || 'trial';
+    const songsUploadedCount = userData.songsUploadedCount || 0;
+
+    if (userRole === 'trial' && songsUploadedCount >= TRIAL_SONG_LIMIT) {
+        return { success: false, error: TRIAL_SONG_LIMIT_ERROR };
+    }
+
+    // If limit is not reached, proceed with the transaction
     const songsCollection = collection(db, 'songs');
 
     // Remove non-serializable 'handle' from tracks before saving to Firestore
@@ -72,49 +87,38 @@ export async function saveSong(data: NewSong) {
         createdAt: serverTimestamp(),
     };
     
-    let newSongDoc;
+    const newDocRef = doc(songsCollection); // Generate a new doc ref with an ID
+    
     await runTransaction(db, async (transaction) => {
-        const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) {
-            throw new Error("El usuario no existe.");
-        }
+        // We re-get the user doc inside the transaction to ensure data consistency
+        const freshUserDoc = await transaction.get(userRef);
+        const freshUserData = freshUserDoc.data()!;
+        const freshSongsUploadedCount = freshUserData.songsUploadedCount || 0;
 
-        const userData = userDoc.data();
-        const userRole = userData.role || 'trial';
-        const songsUploadedCount = userData.songsUploadedCount || 0;
-
-        if (userRole === 'trial' && songsUploadedCount >= TRIAL_SONG_LIMIT) {
-            // En lugar de lanzar un error, devolvemos un código de error específico
+        // The check is repeated inside the transaction to prevent race conditions
+        if ((freshUserData.role || 'trial') === 'trial' && freshSongsUploadedCount >= TRIAL_SONG_LIMIT) {
+            // This time we throw to abort the transaction
             throw new Error(TRIAL_SONG_LIMIT_ERROR);
         }
-        
-        // Crear el nuevo documento de canción
-        const newDocRef = doc(songsCollection); // Genera una referencia con un ID nuevo
-        transaction.set(newDocRef, formattedData);
-        
-        // Actualizar el contador de canciones del usuario
-        transaction.update(userRef, { songsUploadedCount: songsUploadedCount + 1 });
 
-        newSongDoc = newDocRef; // Guardamos la referencia para usarla después de la transacción
+        transaction.set(newDocRef, formattedData);
+        transaction.update(userRef, { songsUploadedCount: freshSongsUploadedCount + 1 });
     });
     
-    if (!newSongDoc) {
-      throw new Error("No se pudo crear la referencia a la nueva canción.");
-    }
-
     const songData: Song = {
-      id: newSongDoc.id,
-      ...data // Devolvemos la data original con el handle para el cliente
+      id: newDocRef.id,
+      ...data // Return original data with the handle for client-side use
     }
     
-    // Disparar el análisis de estructura en segundo plano
-    runStructureAnalysisOnUpload(newSongDoc.id, data.tracks);
+    // Trigger structure analysis in the background
+    runStructureAnalysisOnUpload(newDocRef.id, data.tracks);
 
     return { success: true, song: songData };
+
   } catch (error) {
     console.error('Error guardando en Firestore:', error);
-     const errorMessage = (error as Error).message;
-    // Propagamos el error de límite para que el cliente pueda manejarlo
+    const errorMessage = (error as Error).message;
+    // Propagate the trial limit error if the transaction was aborted
     if (errorMessage === TRIAL_SONG_LIMIT_ERROR) {
       return { success: false, error: TRIAL_SONG_LIMIT_ERROR };
     }
@@ -335,3 +339,5 @@ export async function synchronizeLyrics(songId: string, input: LyricsSyncInput):
         return { success: false, error: (error as Error).message };
     }
 }
+
+    
