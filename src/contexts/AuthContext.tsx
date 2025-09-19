@@ -42,7 +42,8 @@ const generateAndAssignShortId = async (user: FirebaseAuthUser, existingData: Do
             songsUploadedCount: existingData.songsUploadedCount || 0,
         };
     }
-
+    
+    const userRef = doc(db, 'users', user.uid);
     const counterRef = doc(db, 'counters', 'users');
     let newShortId = '';
     let newRole: UserRole = user.email === 'ueservicesllc1@gmail.com' ? 'admin' : 'trial';
