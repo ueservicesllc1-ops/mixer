@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { transposeNote } from '@/lib/utils';
+import { getCachedArrayBuffer, cacheArrayBuffer } from '@/lib/audiocache';
 
 const eqFrequencies = [60, 250, 1000, 4000, 8000];
 const MAX_EQ_GAIN = 12;
@@ -200,40 +201,49 @@ const DawPage = () => {
   }, [activeSongId, tracks, loadingTracks]);
   
   const handleSongSelected = useCallback(async (songId: string) => {
-      if (songId === activeSongId) return;
-      stopAllTracks();
-      setActiveSongId(songId);
-      setPlaybackRate(1);
-      setPitch(0);
-      setDuration(0);
+    if (songId === activeSongId) return;
+    stopAllTracks();
+    setActiveSongId(songId);
+    setPlaybackRate(1);
+    setPitch(0);
+    setDuration(0);
 
-      await initAudio();
-      const Tone = toneRef.current;
-      if (!Tone || eqNodesRef.current.length === 0) return;
+    await initAudio();
+    const Tone = toneRef.current;
+    if (!Tone || eqNodesRef.current.length === 0) return;
 
-      const tracksForSong = tracks.filter(t => t.songId === songId);
-      let maxDuration = 0;
+    const tracksForSong = tracks.filter(t => t.songId === songId);
+    let maxDuration = 0;
 
-      tracksForSong.forEach(async (track) => {
+    const loadTrack = async (track: SetlistSong) => {
         if (trackNodesRef.current[track.id] || loadingTracks.has(track.fileKey)) {
-          if (trackNodesRef.current[track.id]) {
-            const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
-             if (playerDuration > maxDuration) maxDuration = playerDuration;
-          }
-          return;
-        };
+            if(trackNodesRef.current[track.id]) {
+                const playerDuration = trackNodesRef.current[track.id].player.buffer.duration;
+                if (playerDuration > maxDuration) maxDuration = playerDuration;
+            }
+            return;
+        }
 
         setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
 
         try {
             const streamUrl = `/api/download-stream?fileKey=${track.fileKey}`;
-            const player = new Tone.Player(streamUrl);
-            await Tone.loaded(); // Wait for the player to be ready (it will buffer enough to start)
+            
+            // Hybrid Caching Logic
+            let audioBuffer: ArrayBuffer | null = await getCachedArrayBuffer(streamUrl);
+            
+            if (!audioBuffer) {
+                const response = await fetch(streamUrl);
+                if (!response.ok) throw new Error(`Failed to fetch ${track.name}`);
+                audioBuffer = await response.arrayBuffer();
+                await cacheArrayBuffer(streamUrl, audioBuffer);
+            }
+            
+            const player = new Tone.Player().toDestination();
+            await player.load(streamUrl);
             
             const playerDuration = player.buffer.duration;
-            if (playerDuration > maxDuration) {
-                maxDuration = playerDuration;
-            }
+            if (playerDuration > maxDuration) maxDuration = playerDuration;
             player.loop = true;
 
             const volume = new Tone.Volume(0);
@@ -260,12 +270,23 @@ const DawPage = () => {
                 newSet.delete(track.fileKey);
                 return newSet;
             });
-            // Update duration one last time after all tracks are processed
-            if (Array.from(loadingTracks).filter(key => tracksForSong.some(t => t.fileKey === key)).length === 1) {
-              setDuration(maxDuration);
-            }
+            // This is a bit tricky, we'll update duration at the end
+        }
+    };
+
+    await Promise.all(tracksForSong.map(loadTrack));
+
+    // After all tracks are attempted, find the max duration
+    let finalMaxDuration = 0;
+    tracksForSong.forEach(track => {
+        const player = trackNodesRef.current[track.id]?.player;
+        if (player && player.loaded) {
+            const playerDuration = player.buffer.duration;
+            if (playerDuration > finalMaxDuration) finalMaxDuration = playerDuration;
         }
     });
+    setDuration(finalMaxDuration);
+
 
   }, [activeSongId, stopAllTracks, initAudio, tracks, loadingTracks, toast]);
 
@@ -286,6 +307,7 @@ const DawPage = () => {
             if (node.volume) node.volume.dispose();
             if (node.waveform) node.waveform.dispose();
         });
+        trackNodesRef.current = {};
     }
   }, []);
 
