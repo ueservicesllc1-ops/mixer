@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, useFormContext } from 'react-hook-form';
 import { z } from 'zod';
 import {
   Form,
@@ -15,7 +16,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileArchive, Cog, GripVertical } from 'lucide-react';
+import { Loader2, Upload, X, CheckCircle, XCircle, Clock, FileArchive, Cog, GripVertical, ListOrdered } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
 import { saveSong, NewSong, TrackFile } from '@/actions/songs';
@@ -107,7 +108,7 @@ const SortableTrackItem: React.FC<SortableTrackItemProps> = ({ index, remove, is
                     <FormField control={control} name={`tracks.${index}.name`} render={({ field }) => (
                         <FormItem>
                             <FormControl>
-                                <Input {...field} className="h-8 text-sm" disabled={isFormBusy} placeholder="Edite los nombres aqui" />
+                                <Input {...field} className="h-8 text-sm" disabled={isFormBusy} placeholder="Nombre de la pista" />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -229,6 +230,35 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     
     event.target.value = '';
   };
+  
+    const getTrackPriority = (trackName: string): number => {
+        const upperCaseName = trackName.toUpperCase();
+        
+        if (upperCaseName.includes('CLICK')) return 1;
+        if (upperCaseName.includes('CUES') || upperCaseName.includes('GUIA')) return 2;
+        if (upperCaseName.includes('DRUM')) return 3;
+        
+        const guitarTerms = ['GTR', 'GT', 'G1', 'G2', 'G3', 'GA', 'AG', 'EG', 'EG1', 'EG2', 'EG3'];
+        if (guitarTerms.some(term => upperCaseName.includes(term))) return 4;
+        
+        if (upperCaseName.includes('STRING')) return 5;
+
+        return 99; // Default priority for other tracks
+    };
+
+    const autoReorderTracks = () => {
+        const currentTracks = form.getValues('tracks');
+        const sortedTracks = [...currentTracks].sort((a, b) => {
+            const priorityA = getTrackPriority(a.name);
+            const priorityB = getTrackPriority(b.name);
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            return a.name.localeCompare(b.name); // Alphabetical for same priority
+        });
+        replace(sortedTracks);
+        toast({ title: 'Pistas Reordenadas', description: 'Las pistas se han ordenado automáticamente.' });
+    };
 
   const processZipFile = async () => {
     if (!selectedZipFile) return;
@@ -258,17 +288,15 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
         setZipProgress(100);
         
         if (allTracks.length > 0) {
-            // Auto-sort CUES and CLICK to top
-            const getPrio = (trackName: string) => {
-                const upperCaseName = trackName.trim().toUpperCase();
-                if (upperCaseName === 'CLICK') return 1;
-                if (['CUES', 'GUIA', 'GUIDES', 'GUIDE'].includes(upperCaseName)) return 2;
-                return 3;
-            };
-            allTracks.sort((a, b) => getPrio(a.name) - getPrio(b.name));
+            allTracks.sort((a, b) => {
+                const priorityA = getTrackPriority(a.name);
+                const priorityB = getTrackPriority(b.name);
+                if (priorityA !== priorityB) return priorityA - priorityB;
+                return a.name.localeCompare(b.name);
+            });
             
             replace(allTracks);
-            toast({ title: 'ZIP procesado', description: `${allTracks.length} pistas de audio extraídas.` });
+            toast({ title: 'ZIP procesado', description: `${allTracks.length} pistas de audio extraídas y ordenadas.` });
         } else {
              toast({ variant: "destructive", title: "ZIP vacío", description: `No se encontraron archivos de audio soportados en el ZIP.` });
         }
@@ -318,22 +346,33 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
     }
     
     setIsUploading(true);
-
-    const preCheckResult = await saveSong({
-      name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
-      timeSignature: data.timeSignature, tracks: [], userId: user.uid,
-    });
-
-    if (preCheckResult.error === TRIAL_SONG_LIMIT_ERROR) {
-      setShowPremiumDialog(true);
-      setIsUploading(false);
-      return;
-    }
     
-    if (!preCheckResult.success && preCheckResult.error) {
-      toast({ variant: 'destructive', title: 'Error de Pre-verificación', description: preCheckResult.error });
-      setIsUploading(false);
-      return;
+    try {
+        const preCheckResult = await saveSong({
+            name: data.name, artist: data.artist, tempo: data.tempo, key: data.key,
+            timeSignature: data.timeSignature, tracks: [], userId: user.uid,
+        });
+
+        if (preCheckResult.error === TRIAL_SONG_LIMIT_ERROR) {
+            setShowPremiumDialog(true);
+            setIsUploading(false);
+            return;
+        }
+        
+        if (!preCheckResult.success && preCheckResult.error) {
+          toast({ variant: 'destructive', title: 'Error de Pre-verificación', description: preCheckResult.error });
+          setIsUploading(false);
+          return;
+        }
+    } catch(e) {
+        // En caso de que falle la acción de `saveSong` por completo
+        if ((e as Error).message === TRIAL_SONG_LIMIT_ERROR) {
+            setShowPremiumDialog(true);
+        } else {
+            toast({ variant: 'destructive', title: 'Error Inesperado', description: (e as Error).message });
+        }
+        setIsUploading(false);
+        return;
     }
     
     const uploadedTracks: TrackFile[] = [];
@@ -443,8 +482,18 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
 
                     <Card>
                          <CardHeader>
-                            <CardTitle>Archivos de Pistas</CardTitle>
-                            <CardDescription>Selecciona los archivos de audio (WAV, MP3, etc.) o un archivo ZIP que los contenga.</CardDescription>
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <CardTitle>Archivos de Pistas</CardTitle>
+                                    <CardDescription>Selecciona los archivos de audio (WAV, MP3, etc.) o un archivo ZIP que los contenga.</CardDescription>
+                                </div>
+                                {fields.length > 0 && (
+                                    <Button type="button" variant="outline" size="sm" onClick={autoReorderTracks} disabled={isFormBusy} className="gap-2">
+                                        <ListOrdered className="w-4 h-4"/>
+                                        Reordenar
+                                    </Button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent>
                              <FormItem>
@@ -537,3 +586,5 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
 };
 
 export default UploadSongForm;
+
+    
