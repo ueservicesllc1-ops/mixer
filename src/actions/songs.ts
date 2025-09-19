@@ -7,9 +7,7 @@ import { analyzeSongStructure, SongStructure, AnalyzeSongStructureInput } from '
 import { synchronizeLyricsFlow, LyricsSyncInput, LyricsSyncOutput } from '@/ai/flows/lyrics-synchronization';
 import { transcribeLyricsFlow, TranscribeLyricsInput } from '@/ai/flows/transcribe-lyrics';
 import { deleteFileFromB2 } from './upload';
-
-export const TRIAL_SONG_LIMIT = 3;
-export const TRIAL_SONG_LIMIT_ERROR = 'TRIAL_LIMIT_REACHED';
+import { TRIAL_SONG_LIMIT, TRIAL_SONG_LIMIT_ERROR } from '@/lib/constants';
 
 
 // Represents a single track file within a song

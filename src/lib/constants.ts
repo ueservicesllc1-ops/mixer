@@ -1,0 +1,4 @@
+
+export const TRIAL_SONG_LIMIT = 3;
+export const TRIAL_SONG_LIMIT_ERROR = 'TRIAL_LIMIT_REACHED';
+export const TRIAL_SETLIST_LIMIT = 5;

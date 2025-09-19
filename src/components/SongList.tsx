@@ -28,6 +28,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import PremiumUpsellDialog from './PremiumUpsellDialog';
+import { TRIAL_SETLIST_LIMIT } from '@/lib/constants';
 
 
 interface SongListProps {
@@ -50,8 +51,6 @@ interface GroupedSong {
     songName: string;
     tracks: SetlistSong[];
 }
-
-const TRIAL_SETLIST_LIMIT = 5;
 
 const SortableSongItem = ({ songGroup, index, songs, activeSongId, loadingTracks, onSongSelected, onRemove, children }: { songGroup: GroupedSong, index: number, songs: Song[], activeSongId: string | null, loadingTracks: Set<string>, onSongSelected: (id: string) => void, onRemove: (id: string, name: string) => void, children: React.ReactNode }) => {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: songGroup.songId });

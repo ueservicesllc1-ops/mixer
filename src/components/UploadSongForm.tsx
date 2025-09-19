@@ -19,12 +19,13 @@ import {
 import { Loader2, Upload, X, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { ScrollArea } from './ui/scroll-area';
-import { saveSong, NewSong, TrackFile, TRIAL_SONG_LIMIT, TRIAL_SONG_LIMIT_ERROR } from '@/actions/songs';
+import { saveSong, NewSong, TrackFile } from '@/actions/songs';
 import { Progress } from './ui/progress';
 import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import PremiumUpsellDialog from './PremiumUpsellDialog';
+import { TRIAL_SONG_LIMIT, TRIAL_SONG_LIMIT_ERROR } from '@/lib/constants';
 
 
 const ACCEPTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
