@@ -25,12 +25,17 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       {
-        protocol: 'https',
+        protocol: 'https' as const,
         hostname: 'i.imgur.com',
         port: '',
         pathname: '/**',
-      }
+      },
     ],
+  },
+  turbopack: {
+    resolveAlias: {
+      'handlebars': 'handlebars/dist/cjs/handlebars.js',
+    },
   },
 };
 
