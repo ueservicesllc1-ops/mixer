@@ -244,7 +244,12 @@ const DawPage = () => {
 
         const volume = new Tone.Volume(0);
         const pitchShift = new Tone.PitchShift({ pitch: 0 });
-        const panner = new Tone.Panner(0);
+
+        // Lógica de paneo
+        const upperCaseName = track.name.trim().toUpperCase();
+        const isGuideTrack = upperCaseName === 'CLICK' || ['CUES', 'GUIA', 'GUIDES', 'GUIDE'].includes(upperCaseName);
+        const panner = new Tone.Panner(isGuideTrack ? -1 : 1);
+
         const waveform = new Tone.Waveform(256);
         
         player.chain(volume, panner, pitchShift);
