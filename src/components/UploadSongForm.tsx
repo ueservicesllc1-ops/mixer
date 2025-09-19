@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState } from 'react';
@@ -246,12 +247,17 @@ const UploadSongForm: React.FC<UploadSongFormProps> = ({ onUploadFinished }) => 
           userId: user.uid,
         };
         const saveResult = await saveSong(songData);
+
         if (saveResult.error === TRIAL_SONG_LIMIT_ERROR) {
             setShowPremiumDialog(true);
             setIsUploading(false);
             return;
         }
-        if (!saveResult.success || !saveResult.song) throw new Error(saveResult.error || 'No se pudo guardar la canción.');
+
+        if (!saveResult.success || !saveResult.song) {
+             throw new Error(saveResult.error || 'No se pudo guardar la canción.');
+        }
+
         toast({ title: '¡Éxito!', description: `La canción "${saveResult.song.name}" ha sido guardada.` });
         setTimeout(() => { resetComponentState(); onUploadFinished(); }, 1000);
     } catch (error) {
