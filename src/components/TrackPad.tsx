@@ -97,7 +97,7 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
   
   const isGuideTrack = useMemo(() => {
     const upperCaseName = track.name.trim().toUpperCase();
-    const guideNames = ['CUES', 'GUIA', 'GUIDES'];
+    const guideNames = ['CUES', 'GUIA', 'GUIDES', 'GUIDE'];
     return upperCaseName === 'CLICK' || guideNames.includes(upperCaseName);
   }, [track.name]);
 
@@ -195,3 +195,5 @@ const TrackPad: React.FC<React.memoExoticComponent<any>> = React.memo(({
 TrackPad.displayName = 'TrackPad';
 
 export default TrackPad;
+
+    

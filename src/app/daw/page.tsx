@@ -151,7 +151,7 @@ const DawPage = () => {
     const getPrio = (trackName: string) => {
         const upperCaseName = trackName.trim().toUpperCase();
         if (upperCaseName === 'CLICK') return 1;
-        if (['CUES', 'GUIA', 'GUIDES'].includes(upperCaseName)) return 2;
+        if (['CUES', 'GUIA', 'GUIDES', 'GUIDE'].includes(upperCaseName)) return 2;
         return 3;
     };
     return tracks
@@ -221,6 +221,7 @@ const DawPage = () => {
     
     const loadPromises = tracksForSong.map(async (track) => {
       if (trackNodesRef.current[track.id]) return; // Ya está cargado en memoria
+      
       setLoadingTracks(prev => new Set(prev.add(track.fileKey)));
       
       try {
@@ -235,7 +236,8 @@ const DawPage = () => {
         }
         
         const player = new Tone.Player();
-        const blobUrl = URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/wav' }));
+        const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+        const blobUrl = URL.createObjectURL(blob);
         await player.load(blobUrl);
 
         player.loop = true;
@@ -625,3 +627,5 @@ const DawPage = () => {
 };
 
 export default DawPage;
+
+    
