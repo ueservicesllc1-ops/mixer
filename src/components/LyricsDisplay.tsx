@@ -1,12 +1,10 @@
 
 'use client';
-
 import React from 'react';
 import Image from 'next/image';
-import { Button } from './ui/button';
 import { Youtube, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import GraphicEq from './GraphicEq';
+import Equalizer, { EqBandCount } from './Equalizer';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 interface LyricsDisplayProps {
@@ -14,9 +12,13 @@ interface LyricsDisplayProps {
   youtubeUrl: string | null;
   onOpenYouTube: () => void;
   onOpenTeleprompter: () => void;
+  // Props del EQ
   eqBands: number[];
   onEqChange: (bandIndex: number, value: number) => void;
   onReset: () => void;
+  bandCount: EqBandCount;
+  onBandCountChange: (newCount: EqBandCount) => void;
+  frequencies: number[];
 }
 
 const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ 
@@ -24,9 +26,13 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({
     youtubeUrl, 
     onOpenYouTube,
     onOpenTeleprompter,
+    // Props del EQ
     eqBands,
     onEqChange,
     onReset,
+    bandCount,
+    onBandCountChange,
+    frequencies,
 }) => {
   return (
     <div className="flex gap-4 h-full">
@@ -52,8 +58,15 @@ const LyricsDisplay: React.FC<LyricsDisplayProps> = ({
                     </div>
                 </button>
             </PopoverTrigger>
-            <PopoverContent className="w-[400px] h-[300px] bg-card/80 backdrop-blur-sm border-border">
-                <GraphicEq bands={eqBands} onBandChange={onEqChange} onReset={onReset} />
+            <PopoverContent className="w-[520px] h-[320px] bg-card/80 backdrop-blur-sm border-border">
+                <Equalizer 
+                    bands={eqBands} 
+                    onBandChange={onEqChange} 
+                    onReset={onReset}
+                    bandCount={bandCount}
+                    onBandCountChange={onBandCountChange}
+                    frequencies={frequencies}
+                />
             </PopoverContent>
         </Popover>
 
