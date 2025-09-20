@@ -264,7 +264,7 @@ const DawPage = () => {
         const blobUrl = URL.createObjectURL(blob);
         await player.load(blobUrl);
 
-        player.loop = true;
+        player.loop = false; // <-- CORRECCIÓN #1
 
         const volume = new Tone.Volume(0);
         const pitchShift = new Tone.PitchShift({ pitch: 0 });
@@ -391,7 +391,15 @@ const DawPage = () => {
     const Tone = toneRef.current;
     if (isPlaying && Tone) {
         const update = () => {
-            setCurrentTime(Tone.Transport.seconds);
+            const newTime = Tone.Transport.seconds;
+            setCurrentTime(newTime);
+
+            // <-- CORRECCIÓN #2
+            if (duration > 0 && newTime >= duration) {
+                stopAllTracks();
+                return;
+            }
+
             const newVuLevels: Record<string, number> = {};
             activeTracksRef.current.forEach(track => {
                 const node = trackNodesRef.current[track.id];
@@ -434,7 +442,7 @@ const DawPage = () => {
         decay();
     }
     return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
-}, [isPlaying]);
+}, [isPlaying, duration, stopAllTracks]); // <-- CORRECCIÓN #2 (dependencias)
 
   const getIsMuted = useCallback((trackId: string) => {
     const isMuted = mutedTracks.includes(trackId);
